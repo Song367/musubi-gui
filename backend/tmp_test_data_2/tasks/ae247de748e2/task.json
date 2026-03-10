@@ -1,0 +1,25 @@
+{
+  "id": "ae247de748e2",
+  "project_id": "15579d502681",
+  "task_type": "train_full",
+  "status": "failed",
+  "command": [
+    "C:/Users/wades/.conda/envs/musubi/python.exe",
+    "E:/workplace/musubi-tuner/src/musubi_tuner/zimage_train.py",
+    "--dit",
+    "E:/missing/dit.safetensors",
+    "--vae",
+    "E:/missing/vae.safetensors",
+    "--text_encoder",
+    "E:/missing/text_encoder",
+    "--dataset_config",
+    "E:\\workplace\\musubi-tuner-ui\\backend\\tmp_test_data_2\\projects\\15579d502681\\dataset_config.toml",
+    "--output_dir",
+    "E:/workplace/musubi-tuner-ui/backend/tmp_test_data_2/output",
+    "--output_name",
+    "smoke"
+  ],
+  "log_path": "E:\\workplace\\musubi-tuner-ui\\backend\\tmp_test_data_2\\logs\\ae247de748e2.log",
+  "pid": 31800,
+  "exit_code": 1
+}

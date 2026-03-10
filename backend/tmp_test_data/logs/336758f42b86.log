@@ -1,0 +1,27 @@
+INFO:__main__:Load dataset config from E:\workplace\musubi-tuner-ui\backend\tmp_test_data\projects\076183f30d5c\dataset_config.toml
+ERROR:musubi_tuner.dataset.config_utils:Invalid user config / ユーザ設定の形式が正しくないようです
+Trying to import sageattention
+Failed to import sageattention
+Traceback (most recent call last):
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 714, in <module>
+    main()
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 710, in main
+    trainer.train(args)
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 130, in train
+    blueprint = blueprint_generator.generate(user_config, args, architecture=self.architecture)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\dataset\config_utils.py", line 223, in generate
+    sanitized_user_config = self.sanitizer.sanitize_user_config(user_config)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\dataset\config_utils.py", line 186, in sanitize_user_config
+    return self.user_config_validator(user_config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wades\.conda\envs\musubi\Lib\site-packages\voluptuous\schema_builder.py", line 205, in __call__
+    return self._compiled([], data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wades\.conda\envs\musubi\Lib\site-packages\voluptuous\schema_builder.py", line 549, in validate_dict
+    return base_validate(path, data.items(), out)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\wades\.conda\envs\musubi\Lib\site-packages\voluptuous\schema_builder.py", line 382, in validate_mapping
+    raise er.MultipleInvalid(errors)
+voluptuous.error.MultipleInvalid: extra keys not allowed @ data['datasets'][0]['subsets']

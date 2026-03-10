@@ -1,0 +1,10 @@
+[general]
+resolution = [1024, 1024]
+caption_extension = ".txt"
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = "E:/workplace/musubi-tuner"
+  num_repeats = 1

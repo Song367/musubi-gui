@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Musubi Tuner UI</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero-bar">
+        <div>
+          <p class="eyebrow">Musubi Tuner Sidecar</p>
+          <h1>Z-Image Training Console</h1>
+          <p class="subtitle">A dedicated control room for Z-Image LoRA and full finetuning, designed to keep Musubi Tuner untouched while you drive preparation, training, and monitoring from one place.</p>
+        </div>
+        <div class="hero-card">
+          <div class="hero-label">Training Workspace</div>
+          <div class="hero-metrics">
+            <div><span class="metric-label">Preset</span><span id="summary-preset" class="metric-value">RTX 3090 (24GB)</span></div>
+            <div><span class="metric-label">Mode</span><span id="summary-mode" class="metric-value">LoRA</span></div>
+            <div><span class="metric-label">Status</span><span id="summary-status" class="metric-value">Idle</span></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="workspace-grid">
+        <section class="stack-column">
+          <article class="panel project-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">Workspace</p>
+                <h2>Project & Runtime</h2>
+              </div>
+              <button id="create-project" class="primary-action">Create Project</button>
+            </div>
+            <label>Project Name<input id="project-name" value="demo-project" /></label>
+            <label>Musubi Tuner Path<input id="musubi-path" value="E:/workplace/musubi-tuner" /></label>
+            <label>Python Bin<input id="python-bin" value="C:/Users/wades/.conda/envs/musubi/python.exe" /></label>
+            <p id="project-status" class="status-line">No project selected.</p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="panel-kicker">Models</p>
+                <h2>Base Assets</h2>
+              </div>
+            </div>
+            <label>DiT Path<input id="dit-path" value="/models/dit.safetensors" /></label>
+            <label>VAE Path<input id="vae-path" value="/models/vae.safetensors" /></label>
+            <label>Text Encoder Path<input id="text-encoder-path" value="/models/text_encoder" /></label>
+            <label>Output Dir<input id="output-dir" value="/outputs" /></label>
+            <label>Output Name<input id="output-name" value="zimage-run" /></label>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="panel-kicker">Models</p>
+                <h2>Asset Downloads</h2>
+              </div>
+            </div>
+            <label>Source Type
+              <select id="asset-source-type">
+                <option value="official">Official Preset</option>
+                <option value="manual">Manual Hugging Face</option>
+              </select>
+            </label>
+            <div class="toolbar-row triple-actions">
+              <button id="apply-asset-templates" class="ghost-action small">Apply Official Templates</button>
+              <button id="download-all-assets" class="secondary-action small">Download All Base Assets</button>
+              <button id="check-models" class="ghost-action small">Check Installed Paths</button>
+            </div>
+            <p id="model-status" class="status-line">Asset download presets not loaded yet.</p>
+
+            <div class="asset-grid">
+              <section class="asset-card">
+                <div class="asset-card-head">
+                  <p class="asset-kicker">Diffusion Transformer</p>
+                  <h3>DiT Asset</h3>
+                </div>
+                <label>Official Source<select id="dit-source-id"></select></label>
+                <label>Manual Repo ID<input id="dit-manual-repo-id" value="" placeholder="org/repo" /></label>
+                <label>Filename<input id="dit-filename" value="split_files/diffusion_models/z_image_bf16.safetensors" /></label>
+                <label>Target Dir<input id="dit-target-dir" value="E:/models/zimage" /></label>
+                <button id="download-dit" class="secondary-action">Download DiT</button>
+              </section>
+
+              <section class="asset-card">
+                <div class="asset-card-head">
+                  <p class="asset-kicker">Latent Autoencoder</p>
+                  <h3>VAE Asset</h3>
+                </div>
+                <label>Official Source<select id="vae-source-id"></select></label>
+                <label>Manual Repo ID<input id="vae-manual-repo-id" value="" placeholder="org/repo" /></label>
+                <label>Filename<input id="vae-filename" value="split_files/vae/ae.safetensors" /></label>
+                <label>Target Dir<input id="vae-target-dir" value="E:/models/zimage" /></label>
+                <button id="download-vae" class="secondary-action">Download VAE</button>
+              </section>
+
+              <section class="asset-card">
+                <div class="asset-card-head">
+                  <p class="asset-kicker">Language Backbone</p>
+                  <h3>Text Encoder Asset</h3>
+                </div>
+                <label>Official Source<select id="text-encoder-source-id"></select></label>
+                <label>Manual Repo ID<input id="text-encoder-manual-repo-id" value="" placeholder="org/repo" /></label>
+                <label>Filename<input id="text-encoder-filename" value="split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors" /></label>
+                <label>Target Dir<input id="text-encoder-target-dir" value="E:/models/zimage" /></label>
+                <button id="download-text-encoder" class="secondary-action">Download Text Encoder</button>
+              </section>
+            </div>
+          </article>
+
+          <article class="panel summary-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="panel-kicker">Launch Check</p>
+                <h2>Training Summary</h2>
+              </div>
+            </div>
+            <div class="summary-list">
+              <div><span>Preset</span><strong id="summary-card-preset">RTX 3090 (24GB)</strong></div>
+              <div><span>Mode</span><strong id="summary-card-mode">LoRA</strong></div>
+              <div><span>GPU</span><strong id="summary-card-gpu">Auto</strong></div>
+              <div><span>Image Dir</span><strong id="summary-card-image-dir">/data/images</strong></div>
+              <div><span>Output</span><strong id="summary-card-output">/outputs</strong></div>
+              <div><span>Python</span><strong id="summary-card-python">C:/Users/wades/.conda/envs/musubi/python.exe</strong></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="stack-column middle-column">
+          <article class="panel">
+            <div class="panel-heading"><div><p class="panel-kicker">Mode Selection</p><h2>Training Controls</h2></div></div>
+            <div class="toolbar-row four-fields">
+              <label class="dense-field">Mode<select id="train-mode"><option value="lora">Z-Image LoRA</option><option value="full_finetune">Z-Image Full Finetune</option></select></label>
+              <label class="dense-field">Hardware Preset<select id="hardware-preset"><option value="rtx3090">RTX 3090 (24GB)</option><option value="h100">H100 (80GB)</option></select></label>
+              <label class="dense-field">GPU Device<select id="gpu-device"><option value="">Loading GPUs...</option></select></label>
+              <label class="dense-field">Mixed Precision<select id="mixed-precision"><option value="bf16">bf16</option><option value="fp16">fp16</option></select></label>
+            </div>
+            <div class="toolbar-row action-row"><button id="refresh-gpus" class="ghost-action small">Refresh GPUs</button><p id="gpu-status" class="status-line inline-status">GPU inventory not loaded yet.</p></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading compact"><div><p class="panel-kicker">Dataset</p><h2>Input Set</h2></div><button id="generate-dataset" class="primary-action">Generate Dataset Config</button></div>
+            <label>Image Dir<input id="image-dir" value="/data/images" /></label>
+            <div class="inline-grid four-up">
+              <label>Width<input id="width" type="number" value="1024" /></label>
+              <label>Height<input id="height" type="number" value="1024" /></label>
+              <label>Batch Size<input id="batch-size" type="number" value="1" /></label>
+              <label>Epochs<input id="max-train-epochs" type="number" value="12" /></label>
+            </div>
+            <div class="toggle-grid">
+              <label class="toggle-card"><input id="enable-bucket" type="checkbox" checked /><span>Enable Bucket</span></label>
+              <label class="toggle-card"><input id="bucket-no-upscale" type="checkbox" /><span>Bucket No Upscale</span></label>
+              <label class="toggle-card"><input id="persistent-workers" type="checkbox" checked /><span>Persistent Workers</span></label>
+              <label class="toggle-card"><input id="gradient-checkpointing" type="checkbox" checked /><span>Gradient Checkpointing</span></label>
+            </div>
+            <pre id="dataset-preview" class="console-box">Dataset config preview will appear here.</pre>
+          </article>
+
+          <article id="lora-controls" class="panel mode-panel active-mode">
+            <div class="panel-heading compact"><div><p class="panel-kicker">LoRA</p><h2>LoRA Controls</h2></div></div>
+            <div class="inline-grid four-up">
+              <label>Learning Rate<input id="lora-learning-rate" type="number" step="0.00001" value="0.0001" /></label>
+              <label>Network Dim<input id="network-dim" type="number" value="32" /></label>
+              <label>Network Alpha<input id="network-alpha" type="number" value="32" /></label>
+              <label>Save Every N Epochs<input id="save-every-n-epochs" type="number" value="1" /></label>
+            </div>
+            <div class="toolbar-row three-fields">
+              <label class="dense-field">Optimizer<select id="lora-optimizer-type"><option value="adamw8bit">adamw8bit</option><option value="adafactor">adafactor</option></select></label>
+              <label class="dense-field">LR Scheduler<select id="lr-scheduler"><option value="constant_with_warmup">constant_with_warmup</option><option value="constant">constant</option></select></label>
+              <label class="dense-field">Warmup Steps<input id="lr-warmup-steps" type="number" value="10" /></label>
+            </div>
+          </article>
+
+          <article id="full-controls" class="panel mode-panel hidden-mode">
+            <div class="panel-heading compact"><div><p class="panel-kicker">Finetune</p><h2>Full Finetune Controls</h2></div></div>
+            <div class="inline-grid four-up">
+              <label>Learning Rate<input id="full-learning-rate" type="number" step="0.000001" value="0.000001" /></label>
+              <label>Save Every N Epochs<input id="full-save-every-n-epochs" type="number" value="1" /></label>
+              <label>Blocks To Swap<input id="blocks-to-swap" type="number" value="0" /></label>
+              <label>Seed<input id="seed" type="number" value="42" /></label>
+            </div>
+            <div class="toolbar-row three-fields">
+              <label class="dense-field">Optimizer<select id="full-optimizer-type"><option value="adafactor">adafactor</option><option value="adamw">adamw</option></select></label>
+              <label class="dense-field">LR Scheduler<select id="full-lr-scheduler"><option value="constant_with_warmup">constant_with_warmup</option><option value="constant">constant</option></select></label>
+              <label class="dense-field">Warmup Steps<input id="full-lr-warmup-steps" type="number" value="10" /></label>
+            </div>
+            <div class="toggle-grid">
+              <label class="toggle-card"><input id="fused-backward-pass" type="checkbox" checked /><span>Fused Backward Pass</span></label>
+              <label class="toggle-card"><input id="full-bf16" type="checkbox" /><span>Full BF16</span></label>
+              <label class="toggle-card"><input id="sdpa" type="checkbox" checked /><span>Use SDPA</span></label>
+            </div>
+          </article>
+        </section>
+
+        <section class="stack-column right-column">
+          <article class="panel run-panel">
+            <div class="panel-heading compact"><div><p class="panel-kicker">Execution</p><h2>Prepare & Train</h2></div></div>
+            <div class="run-actions">
+              <button id="cache-latents" class="secondary-action">Cache Latents</button>
+              <button id="cache-text" class="secondary-action">Cache Text Encoder</button>
+              <button id="start-training" class="primary-action large">Start Training</button>
+              <button id="refresh-task" class="ghost-action">Refresh Task</button>
+              <button id="stop-task" class="danger-action">Stop Task</button>
+            </div>
+            <div class="status-stack">
+              <p id="prepare-status" class="status-line">Preparation tasks have not started.</p>
+              <p id="train-status" class="status-line">No active training task.</p>
+            </div>
+          </article>
+
+          <article class="panel log-panel">
+            <div class="panel-heading compact"><div><p class="panel-kicker">Monitor</p><h2>Task Log</h2></div><span id="log-badge" class="log-badge">Idle</span></div>
+            <pre id="log-output" class="console-box tall-console">Logs will appear here.</pre>
+          </article>
+        </section>
+      </main>
+    </div>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

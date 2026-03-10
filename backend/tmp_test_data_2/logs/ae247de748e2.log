@@ -1,0 +1,36 @@
+INFO:__main__:Load dataset config from E:\workplace\musubi-tuner-ui\backend\tmp_test_data_2\projects\15579d502681\dataset_config.toml
+INFO:musubi_tuner.dataset.image_video_dataset:glob images in E:/workplace/musubi-tuner
+INFO:musubi_tuner.dataset.image_video_dataset:found 0 images
+INFO:musubi_tuner.dataset.config_utils:[Dataset 0]
+  is_image_dataset: True
+  resolution: (1024, 1024)
+  batch_size: 1
+  num_repeats: 1
+  caption_extension: ".txt"
+  enable_bucket: True
+  bucket_no_upscale: False
+  cache_directory: "E:/workplace/musubi-tuner/cache"
+  debug_dataset: False
+    image_directory: "E:/workplace/musubi-tuner"
+    image_jsonl_file: "None"
+    control_directory: "None"
+    multiple_target: False
+    fp_latent_window_size: 9
+    fp_1f_clean_indices: None
+    fp_1f_target_index: None
+    fp_1f_no_post: False
+    no_resize_control: False
+    control_resolution: None
+
+
+INFO:musubi_tuner.dataset.image_video_dataset:total batches: 0
+Trying to import sageattention
+Failed to import sageattention
+Traceback (most recent call last):
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 714, in <module>
+    main()
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 710, in main
+    trainer.train(args)
+  File "E:\workplace\musubi-tuner\src\musubi_tuner\zimage_train.py", line 136, in train
+    raise ValueError(
+ValueError: No training items found in the dataset. Please ensure that the latent/Text Encoder cache has been created beforehand. / データセットに学習データがありません。latent/Text Encoderキャッシュを事前に作成したか確認してください

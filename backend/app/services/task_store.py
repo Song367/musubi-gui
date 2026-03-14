@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -14,7 +14,10 @@ class TaskStore:
     def save(self, task: TaskRecord) -> TaskRecord:
         task_dir = self.root / task.id
         task_dir.mkdir(parents=True, exist_ok=True)
-        (task_dir / 'task.json').write_text(task.model_dump_json(indent=2), encoding='utf-8')
+        task_file = task_dir / 'task.json'
+        temp_file = task_dir / 'task.json.tmp'
+        temp_file.write_text(task.model_dump_json(indent=2), encoding='utf-8')
+        temp_file.replace(task_file)
         return task
 
     def load(self, task_id: str) -> TaskRecord:

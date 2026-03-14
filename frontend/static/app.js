@@ -596,8 +596,16 @@ function closeTaskStream() {
   }
 }
 
+function isDownloadTask(task) {
+  return task.task_type === "download_model" || task.task_type === "download_all_models";
+}
+
 function updateTaskStatusText(task) {
   const summary = `Task ${task.id}: ${task.status}`;
+  if (isDownloadTask(task)) {
+    updateSummary(task.status);
+    return;
+  }
   setText("train-status", summary);
   setText("prepare-status", summary);
   updateSummary(task.status);

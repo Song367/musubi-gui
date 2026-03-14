@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from app.main import app
 
@@ -25,3 +26,10 @@ def test_root_serves_redesigned_console_shell():
     assert "RTX 3090 (24GB)" in body
     assert "H100 (80GB)" in body
     assert 'type="checkbox"' in body
+
+
+def test_frontend_keeps_download_status_out_of_prepare_train_panel():
+    app_js = Path("frontend/static/app.js").read_text(encoding="utf-8")
+
+    assert "function isDownloadTask(task)" in app_js
+    assert 'if (isDownloadTask(task)) {' in app_js

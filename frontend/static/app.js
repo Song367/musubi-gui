@@ -21,6 +21,7 @@ const state = {
   sources: [],
   saveTimer: null,
   workspaceRoot: "",
+  taskStream: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -248,6 +249,7 @@ function assetPayload(asset) {
     source_type: byId("asset-source-type").value,
     source_id: byId(assetInputId(asset, "source-id")).value,
     repo_id: byId(assetInputId(asset, "manual-repo-id")).value.trim(),
+    asset,
     filename: byId(assetInputId(asset, "filename")).value.trim(),
     target_dir: byId(assetInputId(asset, "target-dir")).value.trim(),
   };
@@ -587,29 +589,110 @@ async function checkModels() {
   setText("model-status", lines.join(" | "));
 }
 
-async function downloadAsset(asset) {
+function closeTaskStream() {
+  if (state.taskStream) {
+    state.taskStream.close();
+    state.taskStream = null;
+  }
+}
+
+function updateTaskStatusText(task) {
+  const summary = `Task ${task.id}: ${task.status}`;
+  setText("train-status", summary);
+  setText("prepare-status", summary);
+  updateSummary(task.status);
+}
+
+function applyDownloadTaskResult(task) {
+  const result = task.result || {};
+  if (task.task_type === "download_model" && result.saved_path) {
+    if (result.asset) {
+      byId(assetPathFieldId(result.asset)).value = result.saved_path;
+      queueSaveProjectState();
+    }
+    setText("model-status", task.status === "succeeded" ? `Download completed: ${result.saved_path}` : "Download task failed.");
+    return;
+  }
+
+  if (task.task_type === "download_all_models" && result.completed_assets) {
+    Object.entries(result.completed_assets).forEach(([asset, assetResult]) => {
+      byId(assetPathFieldId(asset)).value = assetResult.saved_path;
+    });
+    queueSaveProjectState();
+    setText("model-status", task.status === "succeeded" ? "All base asset downloads completed." : "Base asset download task failed.");
+  }
+}
+
+async function refreshTask(options = {}) {
+  if (!state.taskId) throw new Error("No task has been started yet.");
+  const task = await request(`/api/tasks/${state.taskId}`);
+  const logs = await request(`/api/tasks/${state.taskId}/logs`);
+  updateTaskStatusText(task);
+  setText("log-output", logs.content || "No logs yet.");
+  if (options.applyResult !== false && task.status !== "running") {
+    applyDownloadTaskResult(task);
+  }
+  return task;
+}
+
+function watchTask(task, options = {}) {
+  closeTaskStream();
+  state.taskId = task.id;
+  if (options.onStart) options.onStart(task);
+  updateTaskStatusText(task);
+  setText("log-output", "Connecting to task log stream...");
+
+  const source = new EventSource(`/api/tasks/${task.id}/stream`);
+  state.taskStream = source;
+
+  source.onmessage = async (event) => {
+    const current = byId("log-output").textContent;
+    const nextChunk = event.data || "";
+    setText("log-output", current === "Connecting to task log stream..." ? nextChunk : `${current}${nextChunk}`);
+    const latestTask = await refreshTask();
+    if (latestTask.status !== "running") {
+      closeTaskStream();
+    }
+  };
+
+  source.onerror = async () => {
+    closeTaskStream();
+    await refreshTask();
+  };
+}
+
+async function startDownloadTask(asset) {
   if (!state.projectId) throw new Error("Create a project first.");
   const payload = assetPayload(asset);
   if (!payload.filename) throw new Error(`Filename is required for ${asset}.`);
-  const result = await request(`/api/projects/${state.projectId}/models/download`, {
+  const task = await request(`/api/projects/${state.projectId}/models/download`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  byId(assetPathFieldId(asset)).value = result.saved_path;
-  return result;
+  watchTask(task, {
+    onStart(startedTask) {
+      setText("model-status", `Download task started for ${asset}: ${startedTask.id}`);
+    },
+  });
 }
 
 async function downloadAllAssets() {
   if (!state.projectId) throw new Error("Create a project first.");
-  const completed = [];
+  const assets = {};
   for (const asset of ASSET_TYPES) {
-    setText("model-status", `Downloading ${asset}...`);
-    const result = await downloadAsset(asset);
-    completed.push(`${asset}: ${result.saved_path}`);
+    const payload = assetPayload(asset);
+    if (!payload.filename) throw new Error(`Filename is required for ${asset}.`);
+    assets[asset] = payload;
   }
-  setText("model-status", `Downloaded all base assets. ${completed.join(" | ")}`);
-  queueSaveProjectState();
-  updateSummary("Assets Ready");
+  const task = await request(`/api/projects/${state.projectId}/models/download-all`, {
+    method: "POST",
+    body: JSON.stringify({ assets }),
+  });
+  watchTask(task, {
+    onStart(startedTask) {
+      setText("model-status", `Batch download task started: ${startedTask.id}`);
+    },
+  });
 }
 
 async function runPrepare(kind) {
@@ -625,9 +708,8 @@ async function runPrepare(kind) {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  state.taskId = task.id;
   setText("prepare-status", `Started ${task.task_type}: ${task.id}`);
-  updateSummary("Preparing");
+  watchTask(task);
 }
 
 async function startTraining() {
@@ -637,25 +719,15 @@ async function startTraining() {
     method: "POST",
     body: JSON.stringify(payloadFromForm()),
   });
-  state.taskId = task.id;
   setText("train-status", `Started ${task.task_type}: ${task.id}`);
-  updateSummary("Running");
+  watchTask(task);
 }
 
 async function stopTask() {
   if (!state.taskId) throw new Error("No task has been started yet.");
   const task = await request(`/api/tasks/${state.taskId}/stop`, { method: "POST" });
-  setText("train-status", `Task ${task.id}: ${task.status}`);
-  updateSummary(task.status);
-}
-
-async function refreshTask() {
-  if (!state.taskId) throw new Error("No task has been started yet.");
-  const task = await request(`/api/tasks/${state.taskId}`);
-  const logs = await request(`/api/tasks/${state.taskId}/logs`);
-  setText("train-status", `Task ${task.id}: ${task.status}`);
-  setText("log-output", logs.content || "No logs yet.");
-  updateSummary(task.status);
+  closeTaskStream();
+  updateTaskStatusText(task);
 }
 
 function bindClick(id, handler) {
@@ -719,24 +791,9 @@ bindClick("generate-dataset", generateDataset);
 bindClick("apply-asset-templates", async () => applyOfficialTemplates());
 bindClick("download-all-assets", downloadAllAssets);
 bindClick("check-models", checkModels);
-bindClick("download-dit", async () => {
-  const result = await downloadAsset("dit");
-  setText("model-status", `DIT downloaded from ${result.repo_id} -> ${result.saved_path}`);
-  queueSaveProjectState();
-  updateSummary("Assets Ready");
-});
-bindClick("download-vae", async () => {
-  const result = await downloadAsset("vae");
-  setText("model-status", `VAE downloaded from ${result.repo_id} -> ${result.saved_path}`);
-  queueSaveProjectState();
-  updateSummary("Assets Ready");
-});
-bindClick("download-text-encoder", async () => {
-  const result = await downloadAsset("text-encoder");
-  setText("model-status", `TEXT-ENCODER downloaded from ${result.repo_id} -> ${result.saved_path}`);
-  queueSaveProjectState();
-  updateSummary("Assets Ready");
-});
+bindClick("download-dit", async () => startDownloadTask("dit"));
+bindClick("download-vae", async () => startDownloadTask("vae"));
+bindClick("download-text-encoder", async () => startDownloadTask("text-encoder"));
 bindClick("cache-latents", () => runPrepare("latents"));
 bindClick("cache-text", () => runPrepare("text"));
 bindClick("start-training", startTraining);

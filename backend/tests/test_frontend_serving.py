@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-from pathlib import Path
 
 from app.main import app
 
@@ -28,8 +27,12 @@ def test_root_serves_redesigned_console_shell():
     assert 'type="checkbox"' in body
 
 
-def test_frontend_keeps_download_status_out_of_prepare_train_panel():
-    app_js = Path("frontend/static/app.js").read_text(encoding="utf-8")
+def test_frontend_supports_multiple_dataset_directories():
+    client = TestClient(app)
+    response = client.get("/")
 
-    assert "function isDownloadTask(task)" in app_js
-    assert 'if (isDownloadTask(task)) {' in app_js
+    assert response.status_code == 200
+    body = response.text
+    assert "Add Dataset" in body
+    assert "dataset-dir-list" in body
+

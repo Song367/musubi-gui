@@ -13,6 +13,7 @@ class ModelPaths(BaseModel):
 
 class DatasetSettings(BaseModel):
     image_dir: str = ""
+    image_dirs: list[str] = Field(default_factory=list)
     caption_extension: str = ".txt"
     resolution: tuple[int, int] = (1024, 1024)
     batch_size: int = 1

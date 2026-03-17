@@ -22,6 +22,7 @@ const state = {
   saveTimer: null,
   workspaceRoot: "",
   taskStream: null,
+  mergedDatasetDir: "",
 };
 
 const byId = (id) => document.getElementById(id);
@@ -139,6 +140,78 @@ function assetPathFieldId(asset) {
   return "text-encoder-path";
 }
 
+function datasetDirInputs() {
+  return Array.from(document.querySelectorAll("[data-dataset-dir-input]"));
+}
+
+function currentDatasetDirDrafts() {
+  const values = datasetDirInputs().map((input) => input.value);
+  return values.length ? values : [""];
+}
+
+function datasetDirValues() {
+  return datasetDirInputs().map((input) => input.value.trim()).filter(Boolean);
+}
+
+function datasetSummaryText() {
+  const values = datasetDirValues();
+  if (!values.length) return state.mergedDatasetDir || "-";
+  if (values.length === 1) return values[0];
+  return `${values.length} dataset dirs`;
+}
+
+function removeDatasetDir(index) {
+  const values = currentDatasetDirDrafts();
+  values.splice(index, 1);
+  renderDatasetDirInputs(values.length ? values : [""]);
+  updateSummary();
+  queueSaveProjectState();
+}
+
+function addDatasetDir() {
+  const values = currentDatasetDirDrafts();
+  values.push("");
+  renderDatasetDirInputs(values);
+}
+
+function renderDatasetDirInputs(values = [""]) {
+  const container = byId("dataset-dir-list");
+  if (!container) return;
+  const drafts = values.length ? values : [""];
+  container.innerHTML = "";
+  drafts.forEach((value, index) => {
+    const row = document.createElement("div");
+    row.className = "dataset-dir-row";
+
+    const label = document.createElement("label");
+    label.className = "dataset-dir-field";
+    label.textContent = `Dataset ${index + 1}`;
+
+    const input = document.createElement("input");
+    input.value = value;
+    input.placeholder = "/data/images-set-a";
+    input.setAttribute("data-dataset-dir-input", "true");
+    input.addEventListener("input", () => {
+      updateSummary();
+      queueSaveProjectState();
+    });
+
+    label.appendChild(input);
+    row.appendChild(label);
+
+    if (drafts.length > 1) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "ghost-action small";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => removeDatasetDir(index));
+      row.appendChild(removeButton);
+    }
+
+    container.appendChild(row);
+  });
+}
+
 function syncModePanels() {
   const isFull = byId("train-mode").value === "full_finetune";
   byId("lora-controls").classList.toggle("hidden-mode", isFull);
@@ -201,7 +274,7 @@ function updateSummary(statusOverride) {
   setText("summary-card-preset", preset.label);
   setText("summary-card-mode", modeLabel);
   setText("summary-card-gpu", selectedGpuLabel());
-  setText("summary-card-image-dir", byId("image-dir").value || "-");
+  setText("summary-card-image-dir", datasetSummaryText());
   setText("summary-card-output", byId("output-dir").value || "-");
   setText("summary-card-python", byId("python-bin").value || "-");
   setText("log-badge", status);
@@ -350,7 +423,8 @@ function collectProjectState() {
       output_name: byId("output-name").value,
     },
     dataset: {
-      image_dir: byId("image-dir").value,
+      image_dir: state.mergedDatasetDir,
+      image_dirs: datasetDirValues(),
       resolution: [numberValue("width"), numberValue("height")],
       batch_size: numberValue("batch-size"),
       enable_bucket: byId("enable-bucket").checked,
@@ -406,7 +480,9 @@ function applyProjectState(project) {
   byId("output-name").value = model.output_name || byId("output-name").value;
 
   const dataset = project.dataset || {};
-  byId("image-dir").value = dataset.image_dir || byId("image-dir").value;
+  state.mergedDatasetDir = dataset.image_dir || "";
+  const datasetDirs = Array.isArray(dataset.image_dirs) && dataset.image_dirs.length ? dataset.image_dirs : (dataset.image_dir ? [dataset.image_dir] : [""]);
+  renderDatasetDirInputs(datasetDirs);
   const resolution = dataset.resolution || [numberValue("width"), numberValue("height")];
   byId("width").value = resolution[0];
   byId("height").value = resolution[1];
@@ -555,8 +631,10 @@ async function loadLastProject() {
 
 async function generateDataset() {
   if (!state.projectId) throw new Error("Create a project first.");
+  const imageDirs = datasetDirValues();
+  if (!imageDirs.length) throw new Error("Add at least one dataset directory.");
   const payload = {
-    image_dir: byId("image-dir").value,
+    image_dirs: imageDirs,
     resolution: [numberValue("width"), numberValue("height")],
     batch_size: numberValue("batch-size"),
     enable_bucket: byId("enable-bucket").checked,
@@ -566,6 +644,7 @@ async function generateDataset() {
     method: "POST",
     body: JSON.stringify(payload),
   });
+  state.mergedDatasetDir = result.merged_dir || state.mergedDatasetDir;
   setText("dataset-preview", result.content);
   queueSaveProjectState();
   updateSummary("Dataset Ready");
@@ -751,7 +830,7 @@ function bindClick(id, handler) {
 
 function bindStateInputs() {
   const immediateInputs = [
-    "project-name", "musubi-path", "python-bin", "dit-path", "vae-path", "text-encoder-path", "output-dir", "output-name", "image-dir",
+    "project-name", "musubi-path", "python-bin", "dit-path", "vae-path", "text-encoder-path", "output-dir", "output-name",
     "dit-manual-repo-id", "dit-filename", "dit-target-dir",
     "vae-manual-repo-id", "vae-filename", "vae-target-dir",
     "text-encoder-manual-repo-id", "text-encoder-filename", "text-encoder-target-dir",
@@ -810,6 +889,8 @@ bindClick("stop-task", stopTask);
 bindClick("refresh-gpus", loadGpus);
 
 bindStateInputs();
+byId("add-dataset-dir").addEventListener("click", addDatasetDir);
+renderDatasetDirInputs([""]);
 applyPreset();
 syncAssetSourceFields();
 Promise.all([loadModelSources(), loadGpus()]).then(loadLastProject);

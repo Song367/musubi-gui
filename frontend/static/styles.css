@@ -185,6 +185,35 @@ button:active { transform: translateY(0); }
   color: #fff1f0;
 }
 .inline-grid { display: grid; gap: 12px; }
+
+.dataset-dir-block {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dataset-dir-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dataset-dir-label {
+  font-size: 14px;
+  color: #dbe6ef;
+}
+.dataset-dir-list {
+  display: grid;
+  gap: 12px;
+}
+.dataset-dir-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+.dataset-dir-field {
+  margin-bottom: 0;
+}
 .four-up { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .toolbar-row { display: grid; gap: 12px; }
 .toolbar-row.four-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }

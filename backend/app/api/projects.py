@@ -1,13 +1,14 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.config import get_projects_root
 from app.models.project import ProjectConfig
 from app.services.dataset_config_writer import render_dataset_config
+from app.services.dataset_merger import build_merged_dataset
 from app.services.project_store import ProjectStore
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -20,7 +21,8 @@ class CreateProjectRequest(BaseModel):
 
 
 class DatasetConfigRequest(BaseModel):
-    image_dir: str
+    image_dir: str = ""
+    image_dirs: list[str] = Field(default_factory=list)
     resolution: tuple[int, int]
     batch_size: int
 
@@ -73,11 +75,41 @@ def list_projects():
 def generate_dataset_config(project_id: str, payload: DatasetConfigRequest):
     store = ProjectStore(get_projects_root())
     project = store.get_project(project_id)
+    image_dirs = [path for path in payload.image_dirs if str(path).strip()]
+    if not image_dirs and payload.image_dir.strip():
+        image_dirs = [payload.image_dir.strip()]
+    if not image_dirs:
+        raise HTTPException(status_code=400, detail='At least one dataset directory is required')
+
+    merged_dir = Path(project.workspace_root) / 'merged_dataset'
+    try:
+        merged_dir, image_count = build_merged_dataset(image_dirs=image_dirs, output_dir=merged_dir)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
     text = render_dataset_config(
-        image_dir=payload.image_dir,
+        image_dir=str(merged_dir),
         resolution=payload.resolution,
         batch_size=payload.batch_size,
     )
     path = Path(project.workspace_root) / 'dataset_config.toml'
     path.write_text(text, encoding='utf-8')
-    return {"path": str(path), "content": text}
+    store.update_project_state(
+        project_id,
+        {
+            'dataset': {
+                'image_dir': str(merged_dir),
+                'image_dirs': image_dirs,
+                'resolution': payload.resolution,
+                'batch_size': payload.batch_size,
+            }
+        },
+    )
+    return {
+        "path": str(path),
+        "merged_dir": str(merged_dir),
+        "image_count": image_count,
+        "content": text,
+    }

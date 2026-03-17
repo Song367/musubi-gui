@@ -33,13 +33,19 @@ def test_update_project_state_persists_nested_fields(tmp_path):
         project.id,
         {
             "model": {"dit_path": "/models/dit.safetensors", "output_name": "run-a"},
-            "dataset": {"image_dir": "/data/images", "batch_size": 2},
+            "dataset": {
+                "image_dir": "/workspace/merged_dataset",
+                "image_dirs": ["/data/images-a", "/data/images-b"],
+                "batch_size": 2,
+            },
             "training": {"mode": "full_finetune", "seed": 123, "gpu_index": "1"},
             "ui": {"hardware_preset": "h100"},
         },
     )
 
     assert updated.model.dit_path == "/models/dit.safetensors"
+    assert updated.dataset.image_dir == "/workspace/merged_dataset"
+    assert updated.dataset.image_dirs == ["/data/images-a", "/data/images-b"]
     assert updated.dataset.batch_size == 2
     assert updated.training.gpu_index == "1"
     assert updated.ui.hardware_preset == "h100"

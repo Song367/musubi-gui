@@ -124,7 +124,7 @@
               <div><span>Preset</span><strong id="summary-card-preset">RTX 3090 (24GB)</strong></div>
               <div><span>Mode</span><strong id="summary-card-mode">LoRA</strong></div>
               <div><span>GPU</span><strong id="summary-card-gpu">Auto</strong></div>
-              <div><span>Image Dir</span><strong id="summary-card-image-dir">/data/images</strong></div>
+              <div><span>Dataset Sources</span><strong id="summary-card-image-dir">/data/images</strong></div>
               <div><span>Output</span><strong id="summary-card-output">/outputs</strong></div>
               <div><span>Python</span><strong id="summary-card-python">C:/Users/wades/.conda/envs/musubi/python.exe</strong></div>
             </div>
@@ -145,7 +145,13 @@
 
           <article class="panel">
             <div class="panel-heading compact"><div><p class="panel-kicker">Dataset</p><h2>Input Set</h2></div><button id="generate-dataset" class="primary-action">Generate Dataset Config</button></div>
-            <label>Image Dir<input id="image-dir" value="/data/images" /></label>
+            <div class="dataset-dir-block">
+              <div class="dataset-dir-toolbar">
+                <span class="dataset-dir-label">Dataset Directories</span>
+                <button id="add-dataset-dir" type="button" class="ghost-action small">Add Dataset</button>
+              </div>
+              <div id="dataset-dir-list" class="dataset-dir-list"></div>
+            </div>
             <div class="inline-grid four-up">
               <label>Width<input id="width" type="number" value="1024" /></label>
               <label>Height<input id="height" type="number" value="1024" /></label>

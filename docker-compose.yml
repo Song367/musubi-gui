@@ -7,22 +7,24 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      # 挂载你的本地配置和数据目录（左边为你 Windows 的路径，右边为容器内的路径）
-      # 你可以将你 UI 里填的 E:/models 映射为 /models
-      - E:/models:/models
-      - E:/workplace/musubi-tuner:/musubi-tuner
-      - E:/outputs:/outputs
-      # (可选) 挂载项目代码方便开发热更新
-      # - ./backend:/app/backend
-      # - ./frontend:/app/frontend
+      # Linux 服务器实际路径映射
+      # 模型存放目录：假设你服务器把外部大模型放在了 /data/models（如果有其他位置请自行修改左侧）
+      - /data/models:/models
+      
+      # 智能相对路径映射：根据你的截图，musubi-tuner 和当前 musubi-gui 在同级目录下，所以直接用 ../ 往上一级即可完美挂载
+      - ../musubi-tuner:/musubi-tuner
+      
+      # 映射相对目录下的 outputs 文件夹，作为跑出来的大模型的存放目标
+      - ../outputs:/outputs
+      
     environment:
       - TZ=Asia/Shanghai
-    # 如果你在容器内需要访问 GPU（比如跑 musubi-tuner 或者调用 nvidia-smi 监控）
-    # 需要安装 NVIDIA Container Toolkit 并取消下方注释：
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    
+    # 【已帮你解除注释开启 GPU】在服务器上跑服务，这段必不可少，它能让容器读取到宿主机的 nvidia-smi
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

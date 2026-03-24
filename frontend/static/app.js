@@ -1,898 +1,864 @@
-const LAST_PROJECT_KEY = "musubi-ui:last-project-id";
-const ASSET_TYPES = ["dit", "vae", "text-encoder"];
-const OFFICIAL_ASSET_TEMPLATES = {
-  zimage_comfy: {
-    dit: "split_files/diffusion_models/z_image_bf16.safetensors",
-    vae: "split_files/vae/ae.safetensors",
-    "text-encoder": "split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
-  },
-  zimage_deturbo: {
-    dit: "z_image_de_turbo_v1_bf16.safetensors",
-  },
-  zimage_turbo_adapter: {
-    dit: "zimage_turbo_training_adapter_v2.safetensors",
-  },
-};
+/* ── Wan 2.2 Training Console — app.js ──────────────────────────────── */
 
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────
 const state = {
   projectId: null,
-  taskId: null,
-  gpus: [],
-  sources: [],
-  saveTimer: null,
-  workspaceRoot: "",
-  taskStream: null,
-  mergedDatasetDir: "",
+  activeTaskId: null,
+  pollInterval: null,
+  taskType: 'i2v',        // 'i2v' | 't2v'
+  modelMode: 'dual',      // 'dual' | 'low' | 'high'
 };
 
-const byId = (id) => document.getElementById(id);
-const assetInputId = (asset, field) => `${asset}-${field}`;
-const assetUiPrefix = (asset) => asset.replace("-", "_");
-
-const PRESETS = {
-  rtx3090: {
-    label: "RTX 3090 (24GB)",
-    mode: "lora",
-    width: 1024,
-    height: 1024,
-    batchSize: 1,
-    epochs: 12,
-    mixedPrecision: "bf16",
-    gradientCheckpointing: true,
-    enableBucket: true,
-    bucketNoUpscale: false,
-    persistentWorkers: true,
-    loraLearningRate: 0.0001,
-    networkDim: 32,
-    networkAlpha: 32,
-    loraOptimizerType: "adamw8bit",
-    lrScheduler: "constant_with_warmup",
-    lrWarmupSteps: 10,
-    loraSaveEveryNEpochs: 1,
-    fullLearningRate: 0.000001,
-    fullOptimizerType: "adafactor",
-    fullLrScheduler: "constant_with_warmup",
-    fullLrWarmupSteps: 10,
-    fullSaveEveryNEpochs: 1,
-    fusedBackwardPass: true,
-    fullBf16: false,
-    blocksToSwap: 8,
-    sdpa: true,
-    seed: 42,
-  },
-  h100: {
-    label: "H100 (80GB)",
-    mode: "full_finetune",
-    width: 1024,
-    height: 1024,
-    batchSize: 1,
-    epochs: 16,
-    mixedPrecision: "bf16",
-    gradientCheckpointing: true,
-    enableBucket: true,
-    bucketNoUpscale: false,
-    persistentWorkers: true,
-    loraLearningRate: 0.0001,
-    networkDim: 32,
-    networkAlpha: 32,
-    loraOptimizerType: "adamw8bit",
-    lrScheduler: "constant_with_warmup",
-    lrWarmupSteps: 10,
-    loraSaveEveryNEpochs: 1,
-    fullLearningRate: 0.000001,
-    fullOptimizerType: "adafactor",
-    fullLrScheduler: "constant_with_warmup",
-    fullLrWarmupSteps: 10,
-    fullSaveEveryNEpochs: 1,
-    fusedBackwardPass: true,
-    fullBf16: false,
-    blocksToSwap: 0,
-    sdpa: true,
-    seed: 42,
-  },
+// ── DOM helpers ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const val = id => $(id)?.value?.trim() ?? '';
+const checked = id => $(id)?.checked ?? false;
+const setStatus = (id, msg, cls = '') => {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-line' + (cls ? ` ${cls}` : '');
 };
 
-async function request(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+// ── API helpers ────────────────────────────────────────────────────────────
+async function api(method, path, body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== null) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); msg = d.detail ?? msg; } catch {}
+    throw new Error(msg);
   }
-  const contentType = response.headers.get("content-type") || "";
-  return contentType.includes("application/json") ? response.json() : response.text();
+  return res.json();
 }
 
-function setText(id, text) {
-  byId(id).textContent = text;
-}
-
-function currentPreset() {
-  return PRESETS[byId("hardware-preset").value] || PRESETS.rtx3090;
-}
-
-function selectedGpuLabel() {
-  const select = byId("gpu-device");
-  return select.options[select.selectedIndex]?.textContent || "Auto / No Pinning";
-}
-
-function joinPath(base, relativePath) {
-  const normalizedBase = String(base || "").replace(/\\/g, "/").replace(/\/+$/, "");
-  const normalizedRelative = String(relativePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalizedBase) return normalizedRelative;
-  if (!normalizedRelative) return normalizedBase;
-  return `${normalizedBase}/${normalizedRelative}`;
-}
-
-function workspaceModelsDir() {
-  return state.workspaceRoot ? joinPath(state.workspaceRoot, "models") : byId("dit-target-dir").value;
-}
-
-function workspaceOutputsDir() {
-  return state.workspaceRoot ? joinPath(state.workspaceRoot, "outputs") : byId("output-dir").value;
-}
-
-function assetPathFieldId(asset) {
-  if (asset === "dit") return "dit-path";
-  if (asset === "vae") return "vae-path";
-  return "text-encoder-path";
-}
-
-function datasetDirInputs() {
-  return Array.from(document.querySelectorAll("[data-dataset-dir-input]"));
-}
-
-function currentDatasetDirDrafts() {
-  const values = datasetDirInputs().map((input) => input.value);
-  return values.length ? values : [""];
-}
-
-function datasetDirValues() {
-  return datasetDirInputs().map((input) => input.value.trim()).filter(Boolean);
-}
-
-function datasetSummaryText() {
-  const values = datasetDirValues();
-  if (!values.length) return state.mergedDatasetDir || "-";
-  if (values.length === 1) return values[0];
-  return `${values.length} dataset dirs`;
-}
-
-function removeDatasetDir(index) {
-  const values = currentDatasetDirDrafts();
-  values.splice(index, 1);
-  renderDatasetDirInputs(values.length ? values : [""]);
-  updateSummary();
-  queueSaveProjectState();
-}
-
-function addDatasetDir() {
-  const values = currentDatasetDirDrafts();
-  values.push("");
-  renderDatasetDirInputs(values);
-}
-
-function renderDatasetDirInputs(values = [""]) {
-  const container = byId("dataset-dir-list");
-  if (!container) return;
-  const drafts = values.length ? values : [""];
-  container.innerHTML = "";
-  drafts.forEach((value, index) => {
-    const row = document.createElement("div");
-    row.className = "dataset-dir-row";
-
-    const label = document.createElement("label");
-    label.className = "dataset-dir-field";
-    label.textContent = `Dataset ${index + 1}`;
-
-    const input = document.createElement("input");
-    input.value = value;
-    input.placeholder = "/data/images-set-a";
-    input.setAttribute("data-dataset-dir-input", "true");
-    input.addEventListener("input", () => {
-      updateSummary();
-      queueSaveProjectState();
-    });
-
-    label.appendChild(input);
-    row.appendChild(label);
-
-    if (drafts.length > 1) {
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "ghost-action small";
-      removeButton.textContent = "Remove";
-      removeButton.addEventListener("click", () => removeDatasetDir(index));
-      row.appendChild(removeButton);
-    }
-
-    container.appendChild(row);
-  });
-}
-
-function syncModePanels() {
-  const isFull = byId("train-mode").value === "full_finetune";
-  byId("lora-controls").classList.toggle("hidden-mode", isFull);
-  byId("full-controls").classList.toggle("hidden-mode", !isFull);
-}
-
-function syncAssetSourceFields() {
-  const isManual = byId("asset-source-type").value === "manual";
-  ASSET_TYPES.forEach((asset) => {
-    byId(assetInputId(asset, "source-id")).disabled = isManual;
-    byId(assetInputId(asset, "manual-repo-id")).disabled = !isManual;
-  });
-}
-
-function syncDerivedAssetPath(asset) {
-  const targetDir = byId(assetInputId(asset, "target-dir")).value;
-  const filename = byId(assetInputId(asset, "filename")).value;
-  byId(assetPathFieldId(asset)).value = joinPath(targetDir, filename);
-}
-
-function syncAllDerivedAssetPaths() {
-  ASSET_TYPES.forEach(syncDerivedAssetPath);
-}
-
-function hydrateWorkspaceDefaults() {
-  if (!state.workspaceRoot) return;
-  const modelsDir = workspaceModelsDir();
-  const outputsDir = workspaceOutputsDir();
-
-  ASSET_TYPES.forEach((asset) => {
-    const targetDirField = byId(assetInputId(asset, "target-dir"));
-    if (!targetDirField.value || targetDirField.value === "E:/models/zimage") {
-      targetDirField.value = modelsDir;
-    }
-  });
-
-  if (!byId("output-dir").value || byId("output-dir").value === "/outputs") {
-    byId("output-dir").value = outputsDir;
-  }
-
-  if (!byId("dit-path").value || byId("dit-path").value === "/models/dit.safetensors") {
-    syncDerivedAssetPath("dit");
-  }
-  if (!byId("vae-path").value || byId("vae-path").value === "/models/vae.safetensors") {
-    syncDerivedAssetPath("vae");
-  }
-  if (!byId("text-encoder-path").value || byId("text-encoder-path").value === "/models/text_encoder") {
-    syncDerivedAssetPath("text-encoder");
-  }
-}
-
-function updateSummary(statusOverride) {
-  const preset = currentPreset();
-  const modeLabel = byId("train-mode").value === "full_finetune" ? "Full Finetune" : "LoRA";
-  const status = statusOverride || byId("summary-status").textContent || "Idle";
-
-  setText("summary-preset", preset.label);
-  setText("summary-mode", modeLabel);
-  setText("summary-status", status);
-  setText("summary-card-preset", preset.label);
-  setText("summary-card-mode", modeLabel);
-  setText("summary-card-gpu", selectedGpuLabel());
-  setText("summary-card-image-dir", datasetSummaryText());
-  setText("summary-card-output", byId("output-dir").value || "-");
-  setText("summary-card-python", byId("python-bin").value || "-");
-  setText("log-badge", status);
-}
-
-function applyPreset() {
-  const preset = currentPreset();
-  byId("train-mode").value = preset.mode;
-  byId("width").value = preset.width;
-  byId("height").value = preset.height;
-  byId("batch-size").value = preset.batchSize;
-  byId("max-train-epochs").value = preset.epochs;
-  byId("mixed-precision").value = preset.mixedPrecision;
-  byId("gradient-checkpointing").checked = preset.gradientCheckpointing;
-  byId("enable-bucket").checked = preset.enableBucket;
-  byId("bucket-no-upscale").checked = preset.bucketNoUpscale;
-  byId("persistent-workers").checked = preset.persistentWorkers;
-  byId("lora-learning-rate").value = preset.loraLearningRate;
-  byId("network-dim").value = preset.networkDim;
-  byId("network-alpha").value = preset.networkAlpha;
-  byId("lora-optimizer-type").value = preset.loraOptimizerType;
-  byId("lr-scheduler").value = preset.lrScheduler;
-  byId("lr-warmup-steps").value = preset.lrWarmupSteps;
-  byId("save-every-n-epochs").value = preset.loraSaveEveryNEpochs;
-  byId("full-learning-rate").value = preset.fullLearningRate;
-  byId("full-optimizer-type").value = preset.fullOptimizerType;
-  byId("full-lr-scheduler").value = preset.fullLrScheduler;
-  byId("full-lr-warmup-steps").value = preset.fullLrWarmupSteps;
-  byId("full-save-every-n-epochs").value = preset.fullSaveEveryNEpochs;
-  byId("fused-backward-pass").checked = preset.fusedBackwardPass;
-  byId("full-bf16").checked = preset.fullBf16;
-  byId("blocks-to-swap").value = preset.blocksToSwap;
-  byId("sdpa").checked = preset.sdpa;
-  byId("seed").value = preset.seed;
-  syncModePanels();
-  updateSummary("Idle");
-}
-
-function numberValue(id) {
-  return Number(byId(id).value || 0);
-}
-
-function assetPayload(asset) {
-  return {
-    source_type: byId("asset-source-type").value,
-    source_id: byId(assetInputId(asset, "source-id")).value,
-    repo_id: byId(assetInputId(asset, "manual-repo-id")).value.trim(),
-    asset,
-    filename: byId(assetInputId(asset, "filename")).value.trim(),
-    target_dir: byId(assetInputId(asset, "target-dir")).value.trim(),
-  };
-}
-
-function applyOfficialTemplates() {
-  if (byId("asset-source-type").value !== "official") {
-    setText("model-status", "Switch Source Type to Official Preset to use one-click templates.");
-    return;
-  }
-
-  const unresolved = [];
-  ASSET_TYPES.forEach((asset) => {
-    const sourceId = byId(assetInputId(asset, "source-id")).value;
-    const template = OFFICIAL_ASSET_TEMPLATES[sourceId]?.[asset];
-    if (template) {
-      byId(assetInputId(asset, "filename")).value = template;
-      syncDerivedAssetPath(asset);
-    } else if (sourceId === "zimage_base_official") {
-      unresolved.push(`${asset}: Tongyi-MAI/Z-Image uses split safetensors; choose the first shard manually`);
-    } else {
-      unresolved.push(`${asset}: no canned filename for ${sourceId}`);
-    }
-  });
-
-  if (unresolved.length) {
-    setText("model-status", `Templates applied where available. ${unresolved.join(" | ")}`);
-  } else {
-    setText("model-status", "Official filename templates applied for DiT, VAE, and Text Encoder.");
-  }
-  queueSaveProjectState();
-}
-
-function payloadFromForm() {
-  const mode = byId("train-mode").value;
-  const common = {
-    mode,
-    dit_path: byId("dit-path").value,
-    vae_path: byId("vae-path").value,
-    text_encoder_path: byId("text-encoder-path").value,
-    output_dir: byId("output-dir").value,
-    output_name: byId("output-name").value,
-    mixed_precision: byId("mixed-precision").value,
-    gradient_checkpointing: byId("gradient-checkpointing").checked,
-    persistent_data_loader_workers: byId("persistent-workers").checked,
-    max_train_epochs: numberValue("max-train-epochs"),
-    seed: numberValue("seed"),
-    gpu_index: byId("gpu-device").value,
-  };
-
-  if (mode === "full_finetune") {
-    return {
-      ...common,
-      learning_rate: Number(byId("full-learning-rate").value),
-      optimizer_type: byId("full-optimizer-type").value,
-      lr_scheduler: byId("full-lr-scheduler").value,
-      lr_warmup_steps: numberValue("full-lr-warmup-steps"),
-      fused_backward_pass: byId("fused-backward-pass").checked,
-      full_bf16: byId("full-bf16").checked,
-      blocks_to_swap: numberValue("blocks-to-swap"),
-      sdpa: byId("sdpa").checked,
-      save_every_n_epochs: numberValue("full-save-every-n-epochs"),
-    };
-  }
-
-  return {
-    ...common,
-    learning_rate: Number(byId("lora-learning-rate").value),
-    optimizer_type: byId("lora-optimizer-type").value,
-    lr_scheduler: byId("lr-scheduler").value,
-    lr_warmup_steps: numberValue("lr-warmup-steps"),
-    network_dim: numberValue("network-dim"),
-    network_alpha: numberValue("network-alpha"),
-    save_every_n_epochs: numberValue("save-every-n-epochs"),
-  };
-}
-
-function collectProjectState() {
-  const ui = {
-    hardware_preset: byId("hardware-preset").value,
-    asset_source_type: byId("asset-source-type").value,
-  };
-
-  ASSET_TYPES.forEach((asset) => {
-    const keyPrefix = assetUiPrefix(asset);
-    ui[`${keyPrefix}_source_id`] = byId(assetInputId(asset, "source-id")).value;
-    ui[`${keyPrefix}_manual_repo_id`] = byId(assetInputId(asset, "manual-repo-id")).value;
-    ui[`${keyPrefix}_filename`] = byId(assetInputId(asset, "filename")).value;
-    ui[`${keyPrefix}_target_dir`] = byId(assetInputId(asset, "target-dir")).value;
-  });
-
-  return {
-    model: {
-      dit_path: byId("dit-path").value,
-      vae_path: byId("vae-path").value,
-      text_encoder_path: byId("text-encoder-path").value,
-      output_dir: byId("output-dir").value,
-      output_name: byId("output-name").value,
-    },
-    dataset: {
-      image_dir: state.mergedDatasetDir,
-      image_dirs: datasetDirValues(),
-      resolution: [numberValue("width"), numberValue("height")],
-      batch_size: numberValue("batch-size"),
-      enable_bucket: byId("enable-bucket").checked,
-      bucket_no_upscale: byId("bucket-no-upscale").checked,
-    },
-    training: {
-      mode: byId("train-mode").value,
-      mixed_precision: byId("mixed-precision").value,
-      gradient_checkpointing: byId("gradient-checkpointing").checked,
-      persistent_data_loader_workers: byId("persistent-workers").checked,
-      max_train_epochs: numberValue("max-train-epochs"),
-      seed: numberValue("seed"),
-      gpu_index: byId("gpu-device").value,
-      lora_learning_rate: Number(byId("lora-learning-rate").value),
-      network_dim: numberValue("network-dim"),
-      network_alpha: numberValue("network-alpha"),
-      lora_optimizer_type: byId("lora-optimizer-type").value,
-      lora_lr_scheduler: byId("lr-scheduler").value,
-      lora_lr_warmup_steps: numberValue("lr-warmup-steps"),
-      lora_save_every_n_epochs: numberValue("save-every-n-epochs"),
-      full_learning_rate: Number(byId("full-learning-rate").value),
-      full_optimizer_type: byId("full-optimizer-type").value,
-      full_lr_scheduler: byId("full-lr-scheduler").value,
-      full_lr_warmup_steps: numberValue("full-lr-warmup-steps"),
-      full_save_every_n_epochs: numberValue("full-save-every-n-epochs"),
-      fused_backward_pass: byId("fused-backward-pass").checked,
-      full_bf16: byId("full-bf16").checked,
-      blocks_to_swap: numberValue("blocks-to-swap"),
-      sdpa: byId("sdpa").checked,
-      learning_rate: Number(byId("train-mode").value === "full_finetune" ? byId("full-learning-rate").value : byId("lora-learning-rate").value),
-      optimizer_type: byId("train-mode").value === "full_finetune" ? byId("full-optimizer-type").value : byId("lora-optimizer-type").value,
-      lr_scheduler: byId("train-mode").value === "full_finetune" ? byId("full-lr-scheduler").value : byId("lr-scheduler").value,
-      lr_warmup_steps: byId("train-mode").value === "full_finetune" ? numberValue("full-lr-warmup-steps") : numberValue("lr-warmup-steps"),
-      save_every_n_epochs: byId("train-mode").value === "full_finetune" ? numberValue("full-save-every-n-epochs") : numberValue("save-every-n-epochs"),
-    },
-    ui,
-  };
-}
-
-function applyProjectState(project) {
-  state.projectId = project.id;
-  state.workspaceRoot = project.workspace_root || "";
-  localStorage.setItem(LAST_PROJECT_KEY, project.id);
-  byId("project-name").value = project.name || byId("project-name").value;
-  byId("musubi-path").value = project.musubi_tuner_path || byId("musubi-path").value;
-  byId("python-bin").value = project.python_bin || byId("python-bin").value;
-
-  const model = project.model || {};
-  byId("dit-path").value = model.dit_path || "";
-  byId("vae-path").value = model.vae_path || "";
-  byId("text-encoder-path").value = model.text_encoder_path || "";
-  byId("output-dir").value = model.output_dir || byId("output-dir").value;
-  byId("output-name").value = model.output_name || byId("output-name").value;
-
-  const dataset = project.dataset || {};
-  state.mergedDatasetDir = dataset.image_dir || "";
-  const datasetDirs = Array.isArray(dataset.image_dirs) && dataset.image_dirs.length ? dataset.image_dirs : (dataset.image_dir ? [dataset.image_dir] : [""]);
-  renderDatasetDirInputs(datasetDirs);
-  const resolution = dataset.resolution || [numberValue("width"), numberValue("height")];
-  byId("width").value = resolution[0];
-  byId("height").value = resolution[1];
-  if (typeof dataset.batch_size === "number") byId("batch-size").value = dataset.batch_size;
-  if (typeof dataset.enable_bucket === "boolean") byId("enable-bucket").checked = dataset.enable_bucket;
-  if (typeof dataset.bucket_no_upscale === "boolean") byId("bucket-no-upscale").checked = dataset.bucket_no_upscale;
-
-  const training = project.training || {};
-  byId("train-mode").value = training.mode || byId("train-mode").value;
-  byId("mixed-precision").value = training.mixed_precision || byId("mixed-precision").value;
-  if (typeof training.gradient_checkpointing === "boolean") byId("gradient-checkpointing").checked = training.gradient_checkpointing;
-  if (typeof training.persistent_data_loader_workers === "boolean") byId("persistent-workers").checked = training.persistent_data_loader_workers;
-  if (typeof training.max_train_epochs === "number") byId("max-train-epochs").value = training.max_train_epochs;
-  if (typeof training.seed === "number") byId("seed").value = training.seed;
-  byId("gpu-device").value = training.gpu_index || "";
-  if (typeof training.lora_learning_rate === "number") byId("lora-learning-rate").value = training.lora_learning_rate;
-  if (typeof training.network_dim === "number") byId("network-dim").value = training.network_dim;
-  if (typeof training.network_alpha === "number") byId("network-alpha").value = training.network_alpha;
-  byId("lora-optimizer-type").value = training.lora_optimizer_type || byId("lora-optimizer-type").value;
-  byId("lr-scheduler").value = training.lora_lr_scheduler || byId("lr-scheduler").value;
-  if (typeof training.lora_lr_warmup_steps === "number") byId("lr-warmup-steps").value = training.lora_lr_warmup_steps;
-  if (typeof training.lora_save_every_n_epochs === "number") byId("save-every-n-epochs").value = training.lora_save_every_n_epochs;
-  if (typeof training.full_learning_rate === "number") byId("full-learning-rate").value = training.full_learning_rate;
-  byId("full-optimizer-type").value = training.full_optimizer_type || byId("full-optimizer-type").value;
-  byId("full-lr-scheduler").value = training.full_lr_scheduler || byId("full-lr-scheduler").value;
-  if (typeof training.full_lr_warmup_steps === "number") byId("full-lr-warmup-steps").value = training.full_lr_warmup_steps;
-  if (typeof training.full_save_every_n_epochs === "number") byId("full-save-every-n-epochs").value = training.full_save_every_n_epochs;
-  if (typeof training.fused_backward_pass === "boolean") byId("fused-backward-pass").checked = training.fused_backward_pass;
-  if (typeof training.full_bf16 === "boolean") byId("full-bf16").checked = training.full_bf16;
-  if (typeof training.blocks_to_swap === "number") byId("blocks-to-swap").value = training.blocks_to_swap;
-  if (typeof training.sdpa === "boolean") byId("sdpa").checked = training.sdpa;
-
-  const ui = project.ui || {};
-  byId("hardware-preset").value = ui.hardware_preset || byId("hardware-preset").value;
-  byId("asset-source-type").value = ui.asset_source_type || byId("asset-source-type").value;
-
-  ASSET_TYPES.forEach((asset) => {
-    const keyPrefix = assetUiPrefix(asset);
-    byId(assetInputId(asset, "source-id")).value = ui[`${keyPrefix}_source_id`] || byId(assetInputId(asset, "source-id")).value;
-    byId(assetInputId(asset, "manual-repo-id")).value = ui[`${keyPrefix}_manual_repo_id`] || "";
-    byId(assetInputId(asset, "filename")).value = ui[`${keyPrefix}_filename`] || byId(assetInputId(asset, "filename")).value;
-    byId(assetInputId(asset, "target-dir")).value = ui[`${keyPrefix}_target_dir`] || byId(assetInputId(asset, "target-dir")).value;
-  });
-
-  hydrateWorkspaceDefaults();
-  syncModePanels();
-  syncAssetSourceFields();
-  setText("project-status", `Project loaded: ${project.name} (${project.id})`);
-  updateSummary("Project Loaded");
-}
-
-async function saveProjectState() {
-  if (!state.projectId) return;
-  const project = await request(`/api/projects/${state.projectId}/state`, {
-    method: "PUT",
-    body: JSON.stringify(collectProjectState()),
-  });
-  setText("project-status", `Project saved: ${project.name} (${project.id})`);
-}
-
-function queueSaveProjectState() {
-  if (!state.projectId) return;
-  clearTimeout(state.saveTimer);
-  state.saveTimer = window.setTimeout(async () => {
-    try {
-      await saveProjectState();
-    } catch (error) {
-      setText("project-status", `Autosave failed: ${String(error.message || error)}`);
-    }
-  }, 500);
-}
-
-function renderSourceOptions() {
-  const options = state.sources.map((source) => `<option value="${source.id}">${source.label} - ${source.repo_id}</option>`).join("");
-  return options || '<option value="">No presets available</option>';
-}
-
-async function loadModelSources() {
-  setText("model-status", "Loading asset source presets...");
-  try {
-    state.sources = await request("/api/models/sources");
-    ASSET_TYPES.forEach((asset) => {
-      const select = byId(assetInputId(asset, "source-id"));
-      const current = select.value;
-      select.innerHTML = renderSourceOptions();
-      if (current) {
-        select.value = current;
-      }
-    });
-    setText("model-status", "Asset source presets loaded.");
-  } catch (error) {
-    ASSET_TYPES.forEach((asset) => {
-      byId(assetInputId(asset, "source-id")).innerHTML = '<option value="">Unable to load presets</option>';
-    });
-    setText("model-status", "Asset source presets unavailable.");
-  }
-  syncAssetSourceFields();
-}
-
-async function loadGpus() {
-  const gpuSelect = byId("gpu-device");
-  const selected = gpuSelect.value;
-  setText("gpu-status", "Refreshing GPU inventory...");
-  try {
-    state.gpus = await request("/api/system/gpus");
-    const options = ['<option value="">Auto / No Pinning</option>'];
-    for (const gpu of state.gpus) {
-      options.push(`<option value="${gpu.index}">GPU ${gpu.index} - ${gpu.name} - ${gpu.memory_used_mb}MB / ${gpu.memory_total_mb}MB - ${gpu.utilization_gpu}%</option>`);
-    }
-    gpuSelect.innerHTML = options.join("");
-    gpuSelect.value = selected || gpuSelect.value;
-    setText("gpu-status", state.gpus.length ? "GPU inventory loaded." : "No GPUs detected by nvidia-smi.");
-  } catch (error) {
-    gpuSelect.innerHTML = '<option value="">Auto / No Pinning</option>';
-    setText("gpu-status", "GPU inventory unavailable.");
-  }
-  updateSummary();
-}
-
+// ── Project ────────────────────────────────────────────────────────────────
 async function createProject() {
-  const payload = {
-    name: byId("project-name").value,
-    musubi_tuner_path: byId("musubi-path").value,
-    python_bin: byId("python-bin").value,
-  };
-  const project = await request("/api/projects", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  applyProjectState(project);
-  await saveProjectState();
-}
-
-async function loadLastProject() {
+  const name = val('project-name');
+  const musubi = val('musubi-path');
+  const python = val('python-bin');
+  if (!name || !musubi || !python) {
+    setStatus('project-status', 'Fill in all project fields.', 'error'); return;
+  }
   try {
-    const projects = await request("/api/projects");
-    if (!projects.length) return;
-    const lastProjectId = localStorage.getItem(LAST_PROJECT_KEY);
-    const chosen = projects.find((project) => project.id === lastProjectId) || projects[projects.length - 1];
-    const project = await request(`/api/projects/${chosen.id}`);
-    applyProjectState(project);
-  } catch (error) {
-    setText("project-status", "No saved project could be restored.");
+    const proj = await api('POST', '/api/projects', { name, musubi_tuner_path: musubi, python_bin: python });
+    state.projectId = proj.id;
+    setStatus('project-status', `✓ Project "${proj.name}" created (${proj.id})`, 'ok');
+    updateSummary();
+  } catch (e) {
+    setStatus('project-status', `Error: ${e.message}`, 'error');
   }
 }
 
-async function generateDataset() {
-  if (!state.projectId) throw new Error("Create a project first.");
-  const imageDirs = datasetDirValues();
-  if (!imageDirs.length) throw new Error("Add at least one dataset directory.");
-  const payload = {
-    image_dirs: imageDirs,
-    resolution: [numberValue("width"), numberValue("height")],
-    batch_size: numberValue("batch-size"),
-    enable_bucket: byId("enable-bucket").checked,
-    bucket_no_upscale: byId("bucket-no-upscale").checked,
-  };
-  const result = await request(`/api/projects/${state.projectId}/dataset-config`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  state.mergedDatasetDir = result.merged_dir || state.mergedDatasetDir;
-  setText("dataset-preview", result.content);
-  queueSaveProjectState();
-  updateSummary("Dataset Ready");
+async function loadProjects() {
+  try {
+    const projects = await api('GET', '/api/projects');
+    if (!projects.length) { setStatus('project-status', 'No existing projects found.'); return; }
+    // Use the most recently created (by id sort)
+    const proj = projects[projects.length - 1];
+    state.projectId = proj.id;
+    $('project-name').value = proj.name;
+    $('musubi-path').value = proj.musubi_tuner_path;
+    $('python-bin').value = proj.python_bin;
+    setStatus('project-status', `✓ Loaded project "${proj.name}" (${proj.id})`, 'ok');
+    updateSummary();
+  } catch (e) {
+    setStatus('project-status', `Error: ${e.message}`, 'error');
+  }
 }
 
+// ── Task Type / Mode ───────────────────────────────────────────────────────
+function applyTaskType(type) {
+  state.taskType = type;
+  document.querySelectorAll('#task-type-tabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.task === type);
+  });
+  // Update default flow shift
+  const shift = type === 'i2v' ? '5.0' : '12.0';
+  $('discrete-flow-shift').value = shift;
+  // Update dit-label
+  $('dit-label').textContent = state.modelMode === 'dual' ? '(Low Noise)' : `(${state.modelMode === 'low' ? 'Low' : 'High'} Noise)`;
+  // Update i2v-mode checkbox
+  $('i2v-mode').checked = type === 'i2v';
+  updateTimestepDefaults();
+  updateSummary();
+}
+
+function applyModelMode(mode) {
+  state.modelMode = mode;
+  const isDual = mode === 'dual';
+  const isHigh = mode === 'high';
+
+  $('dit-high-noise-field').classList.toggle('hidden', !isDual);
+  $('timestep-range-fields').classList.toggle('hidden', isDual);
+  $('timestep-boundary-fields').classList.toggle('hidden', !isDual);
+
+  const ditLabel = isDual ? '(Low Noise)' : (isHigh ? '(High Noise)' : '(Low Noise)');
+  $('dit-label').textContent = ditLabel;
+
+  updateTimestepDefaults();
+  updateSummary();
+}
+
+function updateTimestepDefaults() {
+  const { taskType, modelMode } = state;
+  if (modelMode === 'low') {
+    $('min-timestep').value = 0;
+    $('max-timestep').value = taskType === 'i2v' ? 900 : 875;
+  } else if (modelMode === 'high') {
+    $('min-timestep').value = taskType === 'i2v' ? 900 : 875;
+    $('max-timestep').value = 1000;
+  } else {
+    $('min-timestep').value = 0;
+    $('max-timestep').value = 1000;
+    $('timestep-boundary').value = taskType === 'i2v' ? -1 : -1;
+  }
+}
+
+// ── Summary ────────────────────────────────────────────────────────────────
+function updateSummary() {
+  const taskLabel = state.taskType === 'i2v' ? 'i2v-A14B' : 't2v-A14B';
+  const modeLabel = { dual: 'Dual Model', low: 'Low Noise', high: 'High Noise' }[state.modelMode] ?? state.modelMode;
+  $('sum-task').textContent = taskLabel;
+  $('sum-mode').textContent = modeLabel;
+  $('sum-epochs').textContent = val('max-train-epochs') || '16';
+  $('sum-lr').textContent = val('learning-rate') || '2e-4';
+
+  const dot = $('global-status-dot');
+  const txt = $('global-status-text');
+  if (state.activeTaskId) {
+    dot.className = 'status-dot running';
+    txt.textContent = 'Running';
+  } else {
+    dot.className = 'status-dot';
+    txt.textContent = 'Idle';
+  }
+}
+
+// ── Dataset directories ────────────────────────────────────────────────────
+function addVideoDir(path = '') {
+  const list = $('video-dir-list');
+  const item = document.createElement('div');
+  item.className = 'dir-item';
+  item.innerHTML = `
+    <input type="text" placeholder="/path/to/videos" value="${path}" />
+    <button class="remove-btn" title="Remove">✕</button>`;
+  item.querySelector('.remove-btn').addEventListener('click', () => item.remove());
+  list.appendChild(item);
+}
+
+function getVideoDirs() {
+  return [...$('video-dir-list').querySelectorAll('input')]
+    .map(i => i.value.trim())
+    .filter(Boolean);
+}
+
+// ── Dataset Config ─────────────────────────────────────────────────────────
+async function generateDatasetConfig() {
+  if (!state.projectId) { setStatus('dataset-status', 'Create a project first.', 'error'); return; }
+  const dirs = getVideoDirs();
+  if (!dirs.length) { setStatus('dataset-status', 'Add at least one video directory.', 'error'); return; }
+
+  const payload = {
+    video_dirs: dirs,
+    resolution: [parseInt(val('res-width')), parseInt(val('res-height'))],
+    batch_size: parseInt(val('batch-size')) || 1,
+    target_frames: parseInt(val('target-frames')) || 81,
+    frame_extraction: val('frame-extraction') || 'head',
+    fps: parseInt(val('dataset-fps')) || 16,
+  };
+  try {
+    const res = await api('POST', `/api/projects/${state.projectId}/dataset-config/video`, payload);
+    $('dataset-preview').textContent = res.content;
+    setStatus('dataset-status', `✓ Config written to ${res.path}`, 'ok');
+  } catch (e) {
+    setStatus('dataset-status', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ── Model Check ────────────────────────────────────────────────────────────
 async function checkModels() {
-  if (!state.projectId) throw new Error("Create a project first.");
-  const result = await request(`/api/projects/${state.projectId}/models/check`, {
-    method: "POST",
-    body: JSON.stringify({
-      dit_path: byId("dit-path").value,
-      vae_path: byId("vae-path").value,
-      text_encoder_path: byId("text-encoder-path").value,
-    }),
-  });
-  const lines = [
-    `DiT: ${result.dit_path.exists ? "FOUND" : "MISSING"}`,
-    `VAE: ${result.vae_path.exists ? "FOUND" : "MISSING"}`,
-    `Text Encoder: ${result.text_encoder_path.exists ? "FOUND" : "MISSING"}`,
-  ];
-  setText("model-status", lines.join(" | "));
-}
-
-function closeTaskStream() {
-  if (state.taskStream) {
-    state.taskStream.close();
-    state.taskStream = null;
-  }
-}
-
-function isDownloadTask(task) {
-  return task.task_type === "download_model" || task.task_type === "download_all_models";
-}
-
-function updateTaskStatusText(task) {
-  const summary = `Task ${task.id}: ${task.status}`;
-  if (isDownloadTask(task)) {
-    updateSummary(task.status);
-    return;
-  }
-  setText("train-status", summary);
-  setText("prepare-status", summary);
-  updateSummary(task.status);
-}
-
-function applyDownloadTaskResult(task) {
-  const result = task.result || {};
-  if (task.task_type === "download_model" && result.saved_path) {
-    if (result.asset) {
-      byId(assetPathFieldId(result.asset)).value = result.saved_path;
-      queueSaveProjectState();
-    }
-    setText("model-status", task.status === "succeeded" ? `Download completed: ${result.saved_path}` : "Download task failed.");
-    return;
-  }
-
-  if (task.task_type === "download_all_models" && result.completed_assets) {
-    Object.entries(result.completed_assets).forEach(([asset, assetResult]) => {
-      byId(assetPathFieldId(asset)).value = assetResult.saved_path;
-    });
-    queueSaveProjectState();
-    setText("model-status", task.status === "succeeded" ? "All base asset downloads completed." : "Base asset download task failed.");
-  }
-}
-
-async function refreshTask(options = {}) {
-  if (!state.taskId) throw new Error("No task has been started yet.");
-  const task = await request(`/api/tasks/${state.taskId}`);
-  const logs = await request(`/api/tasks/${state.taskId}/logs`);
-  updateTaskStatusText(task);
-  setText("log-output", logs.content || "No logs yet.");
-  if (options.applyResult !== false && task.status !== "running") {
-    applyDownloadTaskResult(task);
-  }
-  return task;
-}
-
-function watchTask(task, options = {}) {
-  closeTaskStream();
-  state.taskId = task.id;
-  if (options.onStart) options.onStart(task);
-  updateTaskStatusText(task);
-  setText("log-output", "Connecting to task log stream...");
-
-  const source = new EventSource(`/api/tasks/${task.id}/stream`);
-  state.taskStream = source;
-
-  source.onmessage = async (event) => {
-    const current = byId("log-output").textContent;
-    const nextChunk = event.data || "";
-    setText("log-output", current === "Connecting to task log stream..." ? nextChunk : `${current}${nextChunk}`);
-    const latestTask = await refreshTask();
-    if (latestTask.status !== "running") {
-      closeTaskStream();
-    }
-  };
-
-  source.onerror = async () => {
-    closeTaskStream();
-    await refreshTask();
-  };
-}
-
-async function startDownloadTask(asset) {
-  if (!state.projectId) throw new Error("Create a project first.");
-  const payload = assetPayload(asset);
-  if (!payload.filename) throw new Error(`Filename is required for ${asset}.`);
-  const task = await request(`/api/projects/${state.projectId}/models/download`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  watchTask(task, {
-    onStart(startedTask) {
-      setText("model-status", `Download task started for ${asset}: ${startedTask.id}`);
-    },
-  });
-}
-
-async function downloadAllAssets() {
-  if (!state.projectId) throw new Error("Create a project first.");
-  const assets = {};
-  for (const asset of ASSET_TYPES) {
-    const payload = assetPayload(asset);
-    if (!payload.filename) throw new Error(`Filename is required for ${asset}.`);
-    assets[asset] = payload;
-  }
-  const task = await request(`/api/projects/${state.projectId}/models/download-all`, {
-    method: "POST",
-    body: JSON.stringify({ assets }),
-  });
-  watchTask(task, {
-    onStart(startedTask) {
-      setText("model-status", `Batch download task started: ${startedTask.id}`);
-    },
-  });
-}
-
-async function runPrepare(kind) {
-  if (!state.projectId) throw new Error("Create a project first.");
-  await saveProjectState();
+  if (!state.projectId) { setStatus('model-status', 'Create a project first.', 'error'); return; }
   const payload = {
-    vae_path: byId("vae-path").value,
-    text_encoder_path: byId("text-encoder-path").value,
-    gpu_index: byId("gpu-device").value,
+    dit_path: val('dit-path'),
+    dit_high_noise_path: state.modelMode === 'dual' ? val('dit-high-noise-path') : '',
+    vae_path: val('vae-path'),
+    t5_path: val('t5-path'),
   };
-  const endpoint = kind === "latents" ? "latents" : "text-encoder";
-  const task = await request(`/api/projects/${state.projectId}/prepare/${endpoint}`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  setText("prepare-status", `Started ${task.task_type}: ${task.id}`);
-  watchTask(task);
+  try {
+    const res = await api('POST', `/api/projects/${state.projectId}/models/check`, payload);
+    const container = $('model-check-results');
+    container.innerHTML = '';
+    for (const [key, info] of Object.entries(res)) {
+      const row = document.createElement('div');
+      row.className = 'model-check-row';
+      const icon = info.exists ? '✓' : '✗';
+      const cls  = info.exists ? 'ok' : 'miss';
+      const label = key.replace(/_/g, ' ');
+      row.innerHTML = `<span class="check-icon ${cls}">${icon}</span><span>${label}: <span class="text-mono">${info.path}</span></span>`;
+      container.appendChild(row);
+    }
+    const allOk = Object.values(res).every(v => v.exists);
+    setStatus('model-status', allOk ? '✓ All model paths found.' : '⚠ Some paths missing.', allOk ? 'ok' : 'error');
+  } catch (e) {
+    setStatus('model-status', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ── Task Launching ─────────────────────────────────────────────────────────
+function requireProject() {
+  if (!state.projectId) { alert('Create or load a project first.'); return false; }
+  return true;
+}
+
+async function cacheLatents() {
+  if (!requireProject()) return;
+  markStep(1, 'active');
+  setStatus('run-status', 'Launching latent cache…', 'info');
+  const payload = {
+    vae_path: val('vae-path'),
+    i2v: checked('i2v-mode'),
+    vae_cache_cpu: checked('vae-cache-cpu'),
+    clip_path: 'wan2.1_is_handled_by_backend',
+    gpu_index: val('gpu-index'),
+  };
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/latents`, payload);
+    startPolling(task.task_id, 'Caching latents…');
+    markStep(1, 'done');
+  } catch (e) {
+    setStatus('run-status', `Error: ${e.message}`, 'error');
+    markStep(1, '');
+  }
+}
+
+async function cacheTextEncoder() {
+  if (!requireProject()) return;
+  markStep(2, 'active');
+  setStatus('run-status', 'Launching text encoder cache…', 'info');
+  const payload = {
+    t5_path: val('t5-path'),
+    batch_size: parseInt(val('te-batch-size')) || 16,
+    fp8_t5: checked('fp8-t5'),
+    gpu_index: val('gpu-index'),
+  };
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/text-encoder`, payload);
+    startPolling(task.task_id, 'Caching text encoder…');
+    markStep(2, 'done');
+  } catch (e) {
+    setStatus('run-status', `Error: ${e.message}`, 'error');
+    markStep(2, '');
+  }
 }
 
 async function startTraining() {
-  if (!state.projectId) throw new Error("Create a project first.");
-  await saveProjectState();
-  const task = await request(`/api/projects/${state.projectId}/train`, {
-    method: "POST",
-    body: JSON.stringify(payloadFromForm()),
-  });
-  setText("train-status", `Started ${task.task_type}: ${task.id}`);
-  watchTask(task);
+  if (!requireProject()) return;
+  markStep(3, 'active');
+  setStatus('run-status', 'Launching training…', 'info');
+
+  const taskLabel = state.taskType === 'i2v' ? 'i2v-A14B' : 't2v-A14B';
+  const isDual = state.modelMode === 'dual';
+
+  const payload = {
+    task: taskLabel,
+    dit_path: val('dit-path'),
+    dit_high_noise_path: isDual ? val('dit-high-noise-path') : '',
+    vae_path: val('vae-path'),
+    t5_path: val('t5-path'),
+    output_dir: val('output-dir'),
+    output_name: val('output-name'),
+    mixed_precision: val('mixed-precision'),
+    learning_rate: parseFloat(val('learning-rate')) || 2e-4,
+    optimizer_type: val('optimizer-type'),
+    lr_scheduler: val('lr-scheduler'),
+    lr_warmup_steps: parseInt(val('lr-warmup-steps')) || 10,
+    max_train_epochs: parseInt(val('max-train-epochs')) || 16,
+    save_every_n_epochs: parseInt(val('save-every-n-epochs')) || 1,
+    seed: parseInt(val('seed')) || 42,
+    network_dim: parseInt(val('network-dim')) || 32,
+    network_alpha: parseInt(val('network-alpha')) || 32,
+    timestep_sampling: val('timestep-sampling'),
+    discrete_flow_shift: parseFloat(val('discrete-flow-shift')) || 5.0,
+    min_timestep: parseInt(val('min-timestep')) || 0,
+    max_timestep: parseInt(val('max-timestep')) || 1000,
+    timestep_boundary: isDual ? parseFloat(val('timestep-boundary')) : -1,
+    preserve_distribution_shape: !isDual && checked('preserve-dist-shape'),
+    gradient_checkpointing: checked('gradient-checkpointing'),
+    fp8_base: checked('fp8-base'),
+    blocks_to_swap: parseInt(val('blocks-to-swap')) || 0,
+    offload_inactive_dit: checked('offload-inactive-dit'),
+    sdpa: checked('sdpa'),
+    persistent_data_loader_workers: checked('persistent-workers'),
+    gpu_index: val('gpu-index'),
+  };
+
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/wan/train`, payload);
+    startPolling(task.task_id, 'Training…');
+  } catch (e) {
+    setStatus('run-status', `Error: ${e.message}`, 'error');
+    markStep(3, '');
+  }
 }
 
 async function stopTask() {
-  if (!state.taskId) throw new Error("No task has been started yet.");
-  const task = await request(`/api/tasks/${state.taskId}/stop`, { method: "POST" });
-  closeTaskStream();
-  updateTaskStatusText(task);
+  if (!state.activeTaskId) return;
+  try {
+    await api('POST', `/api/tasks/${state.activeTaskId}/stop`);
+    setStatus('run-status', 'Stop signal sent.', 'info');
+  } catch (e) {
+    setStatus('run-status', `Stop error: ${e.message}`, 'error');
+  }
 }
 
-function bindClick(id, handler) {
-  byId(id).addEventListener("click", async () => {
-    try {
-      await handler();
-    } catch (error) {
-      setText("log-output", String(error.message || error));
-      updateSummary("Attention Needed");
+// ── Task Polling ───────────────────────────────────────────────────────────
+function startPolling(taskId, label = 'Running…') {
+  stopPolling();
+  state.activeTaskId = taskId;
+  $('task-id-line').textContent = `Task: ${taskId}`;
+  setLogBadge('running');
+  updateSummary();
+  setStatus('run-status', label, 'info');
+  state.pollInterval = setInterval(() => pollTask(taskId), 2000);
+  pollTask(taskId);
+}
+
+function stopPolling() {
+  if (state.pollInterval) { clearInterval(state.pollInterval); state.pollInterval = null; }
+}
+
+async function pollTask(taskId) {
+  try {
+    const task = await api('GET', `/api/tasks/${taskId}`);
+    // Fetch logs
+    const logs = await api('GET', `/api/tasks/${taskId}/logs`);
+    $('log-output').textContent = logs.content || '(no output yet)';
+    $('log-output').scrollTop = $('log-output').scrollHeight;
+
+    if (task.status === 'running') {
+      setLogBadge('running');
+    } else if (task.status === 'done') {
+      setLogBadge('done');
+      setStatus('run-status', '✓ Task completed.', 'ok');
+      stopPolling();
+      state.activeTaskId = null;
+      updateSummary();
+    } else if (task.status === 'error' || task.status === 'failed') {
+      setLogBadge('error');
+      setStatus('run-status', 'Task failed. Check logs.', 'error');
+      stopPolling();
+      state.activeTaskId = null;
+      updateSummary();
+    }
+  } catch {}
+}
+
+async function manualRefreshTask() {
+  if (!state.activeTaskId) {
+    setStatus('run-status', 'No active task to refresh.'); return;
+  }
+  await pollTask(state.activeTaskId);
+}
+
+function setLogBadge(status) {
+  const badge = $('log-badge');
+  badge.className = `log-badge ${status}`;
+  badge.textContent = { running: 'Running', done: 'Done', error: 'Error', '': 'Idle' }[status] ?? status;
+
+  const dot = $('global-status-dot');
+  const txt = $('global-status-text');
+  if (status === 'running') { dot.className = 'status-dot running'; txt.textContent = 'Running'; }
+  else if (status === 'done') { dot.className = 'status-dot done'; txt.textContent = 'Done'; }
+  else if (status === 'error') { dot.className = 'status-dot error'; txt.textContent = 'Error'; }
+  else { dot.className = 'status-dot'; txt.textContent = 'Idle'; }
+}
+
+// ── Step indicator helpers ─────────────────────────────────────────────────
+function markStep(num, st) {
+  const el = $(`step${num}-num`);
+  if (!el) return;
+  el.parentElement.classList.remove('active', 'done');
+  if (st === 'active') el.parentElement.classList.add('active');
+  else if (st === 'done') el.parentElement.classList.add('done');
+}
+
+const WAN22_PANELS  = ['#wan22-section-sidebar', '#wan22-top-row-cols', '#wan22-training-panel', '#wan22-run-row'];
+const ZIMAGE_PANELS = ['#zimage-top-row', '#zimage-training-panel', '#zimage-run-row'];
+
+function applyArch(arch) {
+  state.arch = arch;
+  document.querySelectorAll('#arch-tabs .tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.arch === arch);
+  });
+
+  const isWan = arch === 'wan22';
+  const isZi = arch === 'zimage';
+  const isTasks = arch === 'tasks';
+
+  const labels = {
+    'wan22': 'Wan 2.2',
+    'zimage': 'Z-Image',
+    'tasks': 'Task Queue'
+  };
+  const badge = document.querySelector('.topbar-badge');
+  if (badge) badge.textContent = labels[arch] || 'Wan 2.2';
+
+  // Wan 2.2 main area panels
+  const wanPanels = ['wan22-top-row-cols', 'wan22-training-panel', 'wan22-run-row'];
+  const ziPanels  = ['zimage-top-row', 'zimage-training-panel', 'zimage-run-row'];
+  const tasksPanels = ['tasks-content'];
+
+  // Sidebar Task Type section (only relevant for Wan 2.2)
+  const taskTypeSection = $('wan22-section-sidebar');
+  if (taskTypeSection) taskTypeSection.classList.toggle('hidden', !isWan);
+
+  const globalSidebar = $('global-sidebar');
+  if (globalSidebar) globalSidebar.style.display = isTasks ? 'none' : '';
+  const appLayout = document.querySelector('.app-layout');
+  if (appLayout) appLayout.classList.toggle('tasks-mode', isTasks);
+
+  wanPanels.forEach(id => $(id)?.classList.toggle('hidden', !isWan));
+  ziPanels .forEach(id => $(id)?.classList.toggle('hidden',  !isZi));
+  tasksPanels.forEach(id => $(id)?.classList.toggle('hidden', !isTasks));
+
+  if (isTasks) {
+    loadTaskQueue();
+  }
+}
+
+// ── Z-Image Dataset dirs ───────────────────────────────────────────────────
+function addImageDir(path = '') {
+  const list = $('zi-image-dir-list');
+  const item = document.createElement('div');
+  item.className = 'dir-item';
+  item.innerHTML = `<input type="text" placeholder="/path/to/images" value="${path}" />
+    <button class="remove-btn" title="Remove">✕</button>`;
+  item.querySelector('.remove-btn').addEventListener('click', () => item.remove());
+  list.appendChild(item);
+}
+
+function getImageDirs() {
+  return [...$('zi-image-dir-list').querySelectorAll('input')]
+    .map(i => i.value.trim())
+    .filter(Boolean);
+}
+
+// ── Z-Image Dataset Config ─────────────────────────────────────────────────
+async function ziGenerateDatasetConfig() {
+  if (!state.projectId) { setStatus('zi-dataset-status', 'Create a project first.', 'error'); return; }
+  const dirs = getImageDirs();
+  if (!dirs.length) { setStatus('zi-dataset-status', 'Add at least one image directory.', 'error'); return; }
+  const payload = {
+    image_dirs: dirs,
+    resolution: [parseInt(val('zi-res-width')), parseInt(val('zi-res-height'))],
+    batch_size: parseInt(val('zi-batch-size')) || 1,
+  };
+  try {
+    const res = await api('POST', `/api/projects/${state.projectId}/dataset-config`, payload);
+    $('zi-dataset-preview').textContent = res.content;
+    setStatus('zi-dataset-status', `✓ Config written to ${res.path}`, 'ok');
+  } catch (e) {
+    setStatus('zi-dataset-status', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ── Z-Image Model Check ────────────────────────────────────────────────────
+async function ziCheckModels() {
+  if (!state.projectId) { setStatus('zi-model-status', 'Create a project first.', 'error'); return; }
+  const payload = {
+    dit_path: val('zi-dit-path'),
+    vae_path: val('zi-vae-path'),
+    t5_path:  val('zi-text-encoder-path'),   // reuse t5 field for text encoder
+  };
+  try {
+    const res = await api('POST', `/api/projects/${state.projectId}/models/check`, payload);
+    const container = $('zi-model-check-results');
+    container.innerHTML = '';
+    for (const [key, info] of Object.entries(res)) {
+      const row = document.createElement('div');
+      row.className = 'model-check-row';
+      const icon = info.exists ? '✓' : '✗';
+      const cls  = info.exists ? 'ok' : 'miss';
+      row.innerHTML = `<span class="check-icon ${cls}">${icon}</span><span>${key.replace(/_/g,' ')}: <span class="text-mono">${info.path}</span></span>`;
+      container.appendChild(row);
+    }
+    const allOk = Object.values(res).every(v => v.exists);
+    setStatus('zi-model-status', allOk ? '✓ All paths found.' : '⚠ Some paths missing.', allOk ? 'ok' : 'error');
+  } catch (e) {
+    setStatus('zi-model-status', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ── Z-Image Task Polling ───────────────────────────────────────────────────
+function ziMarkStep(num, st) {
+  const el = $(`zi-step${num}-num`);
+  if (!el) return;
+  el.parentElement.classList.remove('active', 'done');
+  if (st === 'active') el.parentElement.classList.add('active');
+  else if (st === 'done') el.parentElement.classList.add('done');
+}
+
+function ziSetLogBadge(status) {
+  const badge = $('zi-log-badge');
+  if (!badge) return;
+  badge.className = `log-badge ${status}`;
+  badge.textContent = { running: 'Running', done: 'Done', error: 'Error', '': 'Idle' }[status] ?? status;
+}
+
+async function ziPollTask(taskId) {
+  try {
+    const task = await api('GET', `/api/tasks/${taskId}`);
+    const logs = await api('GET', `/api/tasks/${taskId}/logs`);
+    $('zi-log-output').textContent = logs.content || '(no output yet)';
+    $('zi-log-output').scrollTop = $('zi-log-output').scrollHeight;
+
+    if (task.status === 'running') {
+      ziSetLogBadge('running');
+    } else if (task.status === 'done') {
+      ziSetLogBadge('done');
+      setStatus('zi-run-status', '✓ Task completed.', 'ok');
+      stopPolling();
+      state.activeTaskId = null;
+      updateSummary();
+    } else if (task.status === 'error' || task.status === 'failed') {
+      ziSetLogBadge('error');
+      setStatus('zi-run-status', 'Task failed. Check logs.', 'error');
+      stopPolling();
+      state.activeTaskId = null;
+      updateSummary();
+    }
+  } catch {}
+}
+
+function ziStartPolling(taskId, label = 'Running…') {
+  stopPolling();
+  state.activeTaskId = taskId;
+  ziSetLogBadge('running');
+  setStatus('zi-run-status', label, 'info');
+  updateSummary();
+  state.pollInterval = setInterval(() => ziPollTask(taskId), 2000);
+  ziPollTask(taskId);
+}
+
+// ── Z-Image Task Launchers ─────────────────────────────────────────────────
+async function ziCacheLatents() {
+  if (!requireProject()) return;
+  ziMarkStep(1, 'active');
+  setStatus('zi-run-status', 'Launching Z-Image latent cache…', 'info');
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/zimage/prepare/latents`, {
+      vae_path: val('zi-vae-path'),
+    });
+    ziStartPolling(task.task_id, 'Caching latents…');
+    ziMarkStep(1, 'done');
+  } catch (e) {
+    setStatus('zi-run-status', `Error: ${e.message}`, 'error');
+    ziMarkStep(1, '');
+  }
+}
+
+async function ziCacheTextEncoder() {
+  if (!requireProject()) return;
+  ziMarkStep(2, 'active');
+  setStatus('zi-run-status', 'Launching Z-Image text encoder cache…', 'info');
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/zimage/prepare/text-encoder`, {
+      vae_path: val('zi-vae-path'),
+      text_encoder_path: val('zi-text-encoder-path'),
+    });
+    ziStartPolling(task.task_id, 'Caching text encoder…');
+    ziMarkStep(2, 'done');
+  } catch (e) {
+    setStatus('zi-run-status', `Error: ${e.message}`, 'error');
+    ziMarkStep(2, '');
+  }
+}
+
+async function ziStartTraining() {
+  if (!requireProject()) return;
+  ziMarkStep(3, 'active');
+  setStatus('zi-run-status', 'Launching Z-Image training…', 'info');
+  const payload = {
+    mode: val('zi-train-mode') || 'lora',
+    dit_path: val('zi-dit-path'),
+    vae_path: val('zi-vae-path'),
+    text_encoder_path: val('zi-text-encoder-path'),
+    output_dir: val('output-dir'),
+    output_name: val('output-name'),
+    learning_rate: parseFloat(val('zi-learning-rate')) || 1e-4,
+    optimizer_type: val('zi-optimizer'),
+    lr_scheduler: val('zi-lr-scheduler'),
+    lr_warmup_steps: parseInt(val('zi-warmup-steps')) || 10,
+    max_train_epochs: parseInt(val('zi-epochs')) || 12,
+    save_every_n_epochs: parseInt(val('zi-save-every')) || 1,
+    network_dim: parseInt(val('zi-network-dim')) || 32,
+    network_alpha: parseInt(val('zi-network-alpha')) || 32,
+    timestep_sampling: val('zi-timestep-sampling') || 'shift',
+    weighting_scheme: val('zi-weighting-scheme') || 'none',
+    discrete_flow_shift: parseFloat(val('zi-discrete-flow-shift')) || 2.0,
+    blocks_to_swap: parseInt(val('zi-blocks-to-swap')) || 0,
+    optimizer_args: val('zi-optimizer-args'),
+    max_grad_norm: parseFloat(val('zi-max-grad-norm')) || 0.0,
+    gradient_checkpointing: checked('zi-gradient-checkpointing'),
+    sdpa: checked('zi-sdpa'),
+    fused_backward_pass: checked('zi-fused-backward'),
+    full_bf16: checked('zi-full-bf16'),
+    gpu_index: val('zi-gpu-index'),
+  };
+  try {
+    const task = await api('POST', `/api/projects/${state.projectId}/zimage/train`, payload);
+    ziStartPolling(task.task_id, 'Training…');
+  } catch (e) {
+    setStatus('zi-run-status', `Error: ${e.message}`, 'error');
+    ziMarkStep(3, '');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+function init() {
+  state.arch = 'wan22';
+
+  // Wan 2.2 buttons
+  $('create-project').addEventListener('click', createProject);
+  $('load-projects').addEventListener('click', loadProjects);
+  $('check-models').addEventListener('click', checkModels);
+  $('generate-dataset').addEventListener('click', generateDatasetConfig);
+  $('add-video-dir').addEventListener('click', () => addVideoDir());
+  $('cache-latents').addEventListener('click', cacheLatents);
+  $('cache-text-encoder').addEventListener('click', cacheTextEncoder);
+  $('start-training').addEventListener('click', startTraining);
+  $('stop-task').addEventListener('click', stopTask);
+  $('refresh-task').addEventListener('click', manualRefreshTask);
+  $('download-all-assets').addEventListener('click', downloadAllAssets);
+
+  // Z-Image buttons
+  $('zi-check-models').addEventListener('click', ziCheckModels);
+  $('zi-download-all-assets').addEventListener('click', ziDownloadAllAssets);
+  $('zi-generate-dataset').addEventListener('click', ziGenerateDatasetConfig);
+  $('zi-add-image-dir').addEventListener('click', () => addImageDir());
+  $('zi-cache-latents').addEventListener('click', ziCacheLatents);
+  $('zi-cache-text-encoder').addEventListener('click', ziCacheTextEncoder);
+  $('zi-start-training').addEventListener('click', ziStartTraining);
+  $('zi-refresh-task').addEventListener('click', () => { if (state.activeTaskId) ziPollTask(state.activeTaskId); });
+
+  // Z-Image Mode Defaults
+  $('zi-train-mode')?.addEventListener('change', e => {
+    if (e.target.value === 'full_finetune') {
+      $('zi-learning-rate').value = '0.000001';
+      $('zi-optimizer').value = 'adafactor';
+    } else {
+      $('zi-learning-rate').value = '0.0001';
+      $('zi-optimizer').value = 'adamw8bit';
     }
   });
-}
 
-function bindStateInputs() {
-  const immediateInputs = [
-    "project-name", "musubi-path", "python-bin", "dit-path", "vae-path", "text-encoder-path", "output-dir", "output-name",
-    "dit-manual-repo-id", "dit-filename", "dit-target-dir",
-    "vae-manual-repo-id", "vae-filename", "vae-target-dir",
-    "text-encoder-manual-repo-id", "text-encoder-filename", "text-encoder-target-dir",
-  ];
+  // Architecture toggle
+  document.querySelectorAll('#arch-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyArch(btn.dataset.arch));
+  });
 
-  const changeIds = [
-    "train-mode", "hardware-preset", "gpu-device", "mixed-precision", "width", "height", "batch-size", "max-train-epochs",
-    "enable-bucket", "bucket-no-upscale", "persistent-workers", "gradient-checkpointing",
-    "lora-learning-rate", "network-dim", "network-alpha", "lora-optimizer-type", "lr-scheduler", "lr-warmup-steps", "save-every-n-epochs",
-    "full-learning-rate", "full-optimizer-type", "full-lr-scheduler", "full-lr-warmup-steps", "full-save-every-n-epochs",
-    "fused-backward-pass", "full-bf16", "blocks-to-swap", "sdpa", "seed", "asset-source-type",
-    "dit-source-id", "vae-source-id", "text-encoder-source-id",
-  ];
+  // Task type tabs (Wan 2.2)
+  document.querySelectorAll('#task-type-tabs .tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => applyTaskType(btn.dataset.task));
+  });
 
-  immediateInputs.forEach((id) => {
-    byId(id).addEventListener("input", () => {
-      if (id.endsWith("-filename") || id.endsWith("-target-dir")) {
-        const asset = id.replace(/-(filename|target-dir)$/, "");
-        syncDerivedAssetPath(asset);
-      }
-      updateSummary();
-      queueSaveProjectState();
+  // Model mode
+  $('train-model-mode').addEventListener('change', e => applyModelMode(e.target.value));
+
+  // Resolution presets
+  document.querySelectorAll('.res-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $('res-width').value  = btn.dataset.w;
+      $('res-height').value = btn.dataset.h;
     });
   });
 
-  changeIds.forEach((id) => {
-    byId(id).addEventListener("change", () => {
-      if (id === "hardware-preset") {
-        applyPreset();
-      }
-      if (id === "train-mode") {
-        syncModePanels();
-      }
-      if (id === "asset-source-type") {
-        syncAssetSourceFields();
-      }
-      updateSummary();
-      queueSaveProjectState();
-    });
+  // Summary live-update
+  ['max-train-epochs','learning-rate'].forEach(id => {
+    $(id)?.addEventListener('input', updateSummary);
   });
+
+  // Default dirs
+  addVideoDir('E:/datasets/wan22');
+  addImageDir('E:/datasets/zimage');
+
+  // Apply initial mode
+  applyModelMode('dual');
+  applyTaskType('i2v');
+  applyArch('wan22');
+
+  updateSummary();
 }
 
-bindClick("create-project", createProject);
-bindClick("generate-dataset", generateDataset);
-bindClick("apply-asset-templates", async () => applyOfficialTemplates());
-bindClick("download-all-assets", downloadAllAssets);
-bindClick("check-models", checkModels);
-bindClick("download-dit", async () => startDownloadTask("dit"));
-bindClick("download-vae", async () => startDownloadTask("vae"));
-bindClick("download-text-encoder", async () => startDownloadTask("text-encoder"));
-bindClick("cache-latents", () => runPrepare("latents"));
-bindClick("cache-text", () => runPrepare("text"));
-bindClick("start-training", startTraining);
-bindClick("refresh-task", refreshTask);
-bindClick("stop-task", stopTask);
-bindClick("refresh-gpus", loadGpus);
+// ── Download All Assets ────────────────────────────────────────────────────
+async function downloadAllAssets() {
+  if (!state.projectId) { setStatus('model-status', 'Create a project first.', 'error'); return; }
+  const targetDir = 'E:/models/wan22';
+  const taskType = state.taskType;
 
-bindStateInputs();
-byId("add-dataset-dir").addEventListener("click", addDatasetDir);
-renderDatasetDirInputs([""]);
-applyPreset();
-syncAssetSourceFields();
-Promise.all([loadModelSources(), loadGpus()]).then(loadLastProject);
-updateSummary("Idle");
+  const ditLowId  = `wan22_dit_lownoise_${taskType}`;
+  const ditHighId = `wan22_dit_highnoise_${taskType}`;
 
+  // Get defaults
+  let defaults = {};
+  try { defaults = await api('GET', '/api/models/sources/defaults'); } catch {}
+
+  const assets = {
+    vae: { source_type: 'official', source_id: 'wan22_vae', asset: 'vae',
+            filename: defaults['wan22_vae'] || 'split_files/vae/wan_2.1_vae.safetensors',
+            target_dir: targetDir },
+    t5:  { source_type: 'official', source_id: 'wan22_t5',  asset: 't5',
+            filename: defaults['wan22_t5']  || 'split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors',
+            target_dir: targetDir },
+    dit_low:  { source_type: 'official', source_id: ditLowId,  asset: 'dit_low',
+                filename: defaults[ditLowId]  || `split_files/diffusion_models/wan2.2_${taskType}_low_noise_fp16.safetensors`,
+                target_dir: targetDir },
+    dit_high: { source_type: 'official', source_id: ditHighId, asset: 'dit_high',
+                filename: defaults[ditHighId] || `split_files/diffusion_models/wan2.2_${taskType}_high_noise_fp16.safetensors`,
+                target_dir: targetDir },
+  };
+
+  try {
+    setStatus('model-status', 'Starting batch model download…', 'info');
+    const task = await api('POST', `/api/projects/${state.projectId}/models/download-all`, { assets });
+    startPolling(task.task_id, 'Downloading models…');
+    setStatus('model-status', `Download task launched: ${task.task_id}`, 'info');
+  } catch (e) {
+    setStatus('model-status', `Download error: ${e.message}`, 'error');
+  }
+}
+
+// ── Z-Image Download All Assets ───────────────────────────────────────────
+async function ziDownloadAllAssets() {
+  if (!state.projectId) { setStatus('zi-model-status', 'Create a project first.', 'error'); return; }
+  const targetDir = 'E:/models/zimage';
+
+  let defaults = {};
+  try { defaults = await api('GET', '/api/models/sources/defaults'); } catch {}
+
+  const assets = {
+    dit: { source_type: 'official', source_id: 'zimage_dit', asset: 'dit',
+           filename: defaults['zimage_dit'] || 'split_files/diffusion_models/z_image_bf16.safetensors',
+           target_dir: targetDir },
+    vae: { source_type: 'official', source_id: 'zimage_vae', asset: 'vae',
+           filename: defaults['zimage_vae'] || 'split_files/vae/ae.safetensors',
+           target_dir: targetDir },
+    te:  { source_type: 'official', source_id: 'zimage_text_encoder', asset: 'text_encoder',
+           filename: defaults['zimage_text_encoder'] || 'split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors',
+           target_dir: targetDir },
+  };
+
+  try {
+    setStatus('zi-model-status', 'Starting batch model download…', 'info');
+    const task = await api('POST', `/api/projects/${state.projectId}/models/download-all`, { assets });
+    ziStartPolling(task.task_id, 'Downloading models…');
+    setStatus('zi-model-status', `Download task launched: ${task.task_id}`, 'info');
+  } catch (e) {
+    setStatus('zi-model-status', `Download error: ${e.message}`, 'error');
+  }
+}
+
+// ── GPU Polling ────────────────────────────────────────────────────────────
+async function pollGPUStatus() {
+  try {
+    const res = await api('GET', '/api/gpu/status');
+    const textEl = $('gpu-text');
+    const dash = $('tasks-gpu-dashboard');
+    
+    if (res.error && res.gpus.length === 0) {
+      if (textEl) textEl.textContent = 'Error or No GPU';
+      if (dash && state.arch === 'tasks') dash.innerHTML = `<div style="padding:16px; color:var(--danger)">Error: ${res.error}</div>`;
+      return;
+    }
+    
+    if (textEl) {
+      const metrics = res.gpus.map(g => `[${g.index}] ${g.utilization}% | ${g.memory_used}MB`);
+      textEl.textContent = metrics.join('  ·  ');
+    }
+    
+    if (dash && state.arch === 'tasks') {
+      dash.innerHTML = res.gpus.map(g => {
+        const memPct = Math.round((g.memory_used / Math.max(1, g.memory_total)) * 100);
+        return `
+          <div style="flex:1; min-width:260px; background:var(--bg-base); border:1px solid var(--border); border-radius:var(--radius-md); padding:16px;">
+            <div style="font-weight:600; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:1.1rem;">GPU ${g.index}</span>
+              <span style="font-size:0.8rem; color:var(--text-muted); background:var(--bg-card); padding:2px 8px; border-radius:12px;">${g.name}</span>
+            </div>
+            <div style="margin-bottom:14px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px; color:var(--text-secondary);">
+                <span>Core Utilization</span>
+                <span style="color:var(--text-primary); font-weight:500;">${g.utilization}%</span>
+              </div>
+              <div style="width:100%; height:6px; background:var(--bg-card); border-radius:4px; overflow:hidden;">
+                <div style="width:${g.utilization}%; height:100%; background:${g.utilization > 85 ? 'var(--danger)' : 'var(--accent)'}; transition:width 0.3s;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:6px; color:var(--text-secondary);">
+                <span>VRAM Usage</span>
+                <span style="color:var(--text-primary); font-weight:500;">${g.memory_used} / ${g.memory_total} MB</span>
+              </div>
+              <div style="width:100%; height:6px; background:var(--bg-card); border-radius:4px; overflow:hidden;">
+                <div style="width:${memPct}%; height:100%; background:${memPct > 85 ? 'var(--danger)' : 'var(--teal)'}; transition:width 0.3s;"></div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (e) {
+    const textEl = $('gpu-text');
+    if (textEl) textEl.textContent = 'Offline';
+    const dash = $('tasks-gpu-dashboard');
+    if (dash && state.arch === 'tasks') dash.innerHTML = `<div style="padding:16px; color:var(--danger)">Offline</div>`;
+  }
+}
+
+setInterval(pollGPUStatus, 3000);
+pollGPUStatus();
+
+// ── Task Queue ─────────────────────────────────────────────────────────────
+async function loadTaskQueue() {
+  const tbody = $('task-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="4" style="padding:12px; text-align:center;" class="text-muted">Loading...</td></tr>';
+  try {
+    const res = await api('GET', '/api/tasks');
+    tbody.innerHTML = '';
+    if (!res.tasks || res.tasks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding:12px; text-align:center;" class="text-muted">No tasks found.</td></tr>';
+      return;
+    }
+    for (const t of res.tasks) {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--border)';
+      
+      let statusColor = 'var(--text-muted)';
+      if (t.status === 'succeeded') statusColor = 'var(--accent)';
+      if (t.status === 'failed') statusColor = '#ef4444';
+      if (t.status === 'running') statusColor = 'var(--teal)';
+
+      tr.innerHTML = `
+        <td style="padding:12px 8px; font-size:0.85em; color:var(--text-muted);">---</td>
+        <td style="padding:12px 8px; font-family:monospace; font-size:0.85em;">${t.id.substring(0,12)}</td>
+        <td style="padding:12px 8px;">${t.task_type}</td>
+        <td style="padding:12px 8px; color:${statusColor}; font-weight:500;">${t.status}</td>
+        <td style="padding:12px 8px;">
+          <a href="/api/tasks/${t.id}/logs" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.85rem;">Logs</a>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="4" style="padding:12px; color:#ef4444;">Error: ${e.message}</td></tr>`;
+  }
+}
+
+$('refresh-tasks-btn')?.addEventListener('click', loadTaskQueue);
+
+document.addEventListener('DOMContentLoaded', init);

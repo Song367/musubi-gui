@@ -3,229 +3,784 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Musubi Tuner UI</title>
+    <meta name="description" content="Musubi Tuner UI — Wan 2.2 LoRA training console" />
+    <title>Musubi Tuner UI — Wan 2.2</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="hero-bar">
-        <div>
-          <p class="eyebrow">Musubi Tuner Sidecar</p>
-          <h1>Z-Image Training Console</h1>
-          <p class="subtitle">A dedicated control room for Z-Image LoRA and full finetuning, designed to keep Musubi Tuner untouched while you drive preparation, training, and monitoring from one place.</p>
+    <div class="app-layout">
+
+      <!-- ──────────────── TOP BAR ──────────────── -->
+      <header class="topbar">
+        <div class="topbar-logo">
+          <div class="logo-icon">🎬</div>
+          <h1>Musubi Tuner UI</h1>
         </div>
-        <div class="hero-card">
-          <div class="hero-label">Training Workspace</div>
-          <div class="hero-metrics">
-            <div><span class="metric-label">Preset</span><span id="summary-preset" class="metric-value">RTX 3090 (24GB)</span></div>
-            <div><span class="metric-label">Mode</span><span id="summary-mode" class="metric-value">LoRA</span></div>
-            <div><span class="metric-label">Status</span><span id="summary-status" class="metric-value">Idle</span></div>
+        <span class="topbar-badge">Wan 2.2</span>
+        <div class="topbar-right">
+          <div class="gpu-widget" id="gpu-widget" title="GPU Status" style="display:flex; gap:8px; font-size:0.85rem; background:var(--bg-card); padding:4px 12px; border-radius:20px; align-items:center;">
+            <span>GPU: <span id="gpu-text" class="text-muted">Loading...</span></span>
+          </div>
+          <div class="tab-group" id="arch-tabs" style="background:var(--bg-card);">
+            <button class="tab-btn active" data-arch="wan22" id="arch-wan22">🎬 Wan 2.2</button>
+            <button class="tab-btn" data-arch="zimage" id="arch-zimage">🖼 Z-Image</button>
+            <button class="tab-btn" data-arch="tasks" id="arch-tasks">📋 Tasks</button>
+          </div>
+          <div class="status-pill">
+            <span id="global-status-dot" class="status-dot"></span>
+            <span id="global-status-text">Idle</span>
           </div>
         </div>
       </header>
 
-      <main class="workspace-grid">
-        <section class="stack-column">
-          <article class="panel project-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="panel-kicker">Workspace</p>
-                <h2>Project & Runtime</h2>
-              </div>
-              <button id="create-project" class="primary-action">Create Project</button>
+      <!-- ──────────────── SIDEBAR ──────────────── -->
+      <aside class="sidebar" id="global-sidebar">
+
+        <!-- Project -->
+        <div>
+          <div class="section-label">Project</div>
+          <div class="card">
+            <div class="card-kicker">Active Workspace</div>
+            <div class="field">
+              <label for="project-name">Project Name</label>
+              <input id="project-name" value="wan22-lora" />
             </div>
-            <label>Project Name<input id="project-name" value="demo-project" /></label>
-            <label>Musubi Tuner Path<input id="musubi-path" value="E:/workplace/musubi-tuner" /></label>
-            <label>Python Bin<input id="python-bin" value="C:/Users/wades/.conda/envs/musubi/python.exe" /></label>
+            <div class="field">
+              <label for="musubi-path">Musubi Tuner Path</label>
+              <input id="musubi-path" value="E:/workplace/musubi-tuner" />
+            </div>
+            <div class="field">
+              <label for="python-bin">Python Executable</label>
+              <input id="python-bin" value="C:/Users/wades/.conda/envs/musubi/python.exe" />
+            </div>
+            <div class="flex-row">
+              <button id="create-project" class="btn btn-primary btn-sm">Create Project</button>
+              <button id="load-projects" class="btn btn-ghost btn-sm">Load</button>
+            </div>
             <p id="project-status" class="status-line">No project selected.</p>
-          </article>
+          </div>
+        </div>
 
-          <article class="panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="panel-kicker">Models</p>
-                <h2>Base Assets</h2>
-              </div>
+        <!-- Task Type -->
+        <div id="wan22-section-sidebar">
+          <div class="section-label">Task Type</div>
+          <div class="card">
+            <div class="card-kicker">Wan 2.2 Mode</div>
+            <div class="tab-group" id="task-type-tabs">
+              <button class="tab-btn active" data-task="i2v">I2V</button>
+              <button class="tab-btn" data-task="t2v">T2V</button>
             </div>
-            <label>DiT Path<input id="dit-path" value="/models/dit.safetensors" /></label>
-            <label>VAE Path<input id="vae-path" value="/models/vae.safetensors" /></label>
-            <label>Text Encoder Path<input id="text-encoder-path" value="/models/text_encoder" /></label>
-            <label>Output Dir<input id="output-dir" value="/outputs" /></label>
-            <label>Output Name<input id="output-name" value="zimage-run" /></label>
-          </article>
-
-          <article class="panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="panel-kicker">Models</p>
-                <h2>Asset Downloads</h2>
-              </div>
-            </div>
-            <label>Source Type
-              <select id="asset-source-type">
-                <option value="official">Official Preset</option>
-                <option value="manual">Manual Hugging Face</option>
+            <div class="field">
+              <label for="train-model-mode">Model Mode</label>
+              <select id="train-model-mode">
+                <option value="dual">Dual Model (High + Low Noise)</option>
+                <option value="low">Low Noise Only</option>
+                <option value="high">High Noise Only</option>
               </select>
-            </label>
-            <div class="toolbar-row triple-actions">
-              <button id="apply-asset-templates" class="ghost-action small">Apply Official Templates</button>
-              <button id="download-all-assets" class="secondary-action small">Download All Base Assets</button>
-              <button id="check-models" class="ghost-action small">Check Installed Paths</button>
             </div>
-            <p id="model-status" class="status-line">Asset download presets not loaded yet.</p>
+            <p class="text-muted">Dual model trains both DiTs simultaneously — best quality.</p>
+          </div>
+        </div>
 
-            <div class="asset-grid">
-              <section class="asset-card">
-                <div class="asset-card-head">
-                  <p class="asset-kicker">Diffusion Transformer</p>
-                  <h3>DiT Asset</h3>
-                </div>
-                <label>Official Source<select id="dit-source-id"></select></label>
-                <label>Manual Repo ID<input id="dit-manual-repo-id" value="" placeholder="org/repo" /></label>
-                <label>Filename<input id="dit-filename" value="split_files/diffusion_models/z_image_bf16.safetensors" /></label>
-                <label>Target Dir<input id="dit-target-dir" value="E:/models/zimage" /></label>
-                <button id="download-dit" class="secondary-action">Download DiT</button>
-              </section>
-
-              <section class="asset-card">
-                <div class="asset-card-head">
-                  <p class="asset-kicker">Latent Autoencoder</p>
-                  <h3>VAE Asset</h3>
-                </div>
-                <label>Official Source<select id="vae-source-id"></select></label>
-                <label>Manual Repo ID<input id="vae-manual-repo-id" value="" placeholder="org/repo" /></label>
-                <label>Filename<input id="vae-filename" value="split_files/vae/ae.safetensors" /></label>
-                <label>Target Dir<input id="vae-target-dir" value="E:/models/zimage" /></label>
-                <button id="download-vae" class="secondary-action">Download VAE</button>
-              </section>
-
-              <section class="asset-card">
-                <div class="asset-card-head">
-                  <p class="asset-kicker">Language Backbone</p>
-                  <h3>Text Encoder Asset</h3>
-                </div>
-                <label>Official Source<select id="text-encoder-source-id"></select></label>
-                <label>Manual Repo ID<input id="text-encoder-manual-repo-id" value="" placeholder="org/repo" /></label>
-                <label>Filename<input id="text-encoder-filename" value="split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors" /></label>
-                <label>Target Dir<input id="text-encoder-target-dir" value="E:/models/zimage" /></label>
-                <button id="download-text-encoder" class="secondary-action">Download Text Encoder</button>
-              </section>
+        <!-- Output -->
+        <div id="shared-output-sidebar">
+          <div class="section-label">Output</div>
+          <div class="card">
+            <div class="field">
+              <label for="output-dir">Output Directory</label>
+              <input id="output-dir" value="E:/outputs/wan22" />
             </div>
-          </article>
+            <div class="field">
+              <label for="output-name">LoRA Name</label>
+              <input id="output-name" value="wan22-lora-v1" />
+            </div>
+          </div>
+        </div>
 
-          <article class="panel summary-panel">
-            <div class="panel-heading compact">
+      </aside>
+
+      <!-- ──────────────── MAIN ──────────────── -->
+      <main class="main-content">
+
+        <!-- Row 1: Models + Dataset —— WAN 2.2 -->
+        <div class="content-columns" id="wan22-top-row-cols">
+
+          <!-- Models Panel -->
+          <div class="card">
+            <div class="card-header">
               <div>
-                <p class="panel-kicker">Launch Check</p>
-                <h2>Training Summary</h2>
+                <div class="card-kicker">Models</div>
+                <div class="card-title">Base Assets</div>
+              </div>
+              <div class="flex-row gap-4">
+                <button id="check-models" class="btn btn-ghost btn-sm">Check Paths</button>
+                <button id="download-all-assets" class="btn btn-secondary btn-sm">Download All</button>
               </div>
             </div>
-            <div class="summary-list">
-              <div><span>Preset</span><strong id="summary-card-preset">RTX 3090 (24GB)</strong></div>
-              <div><span>Mode</span><strong id="summary-card-mode">LoRA</strong></div>
-              <div><span>GPU</span><strong id="summary-card-gpu">Auto</strong></div>
-              <div><span>Dataset Sources</span><strong id="summary-card-image-dir">/data/images</strong></div>
-              <div><span>Output</span><strong id="summary-card-output">/outputs</strong></div>
-              <div><span>Python</span><strong id="summary-card-python">C:/Users/wades/.conda/envs/musubi/python.exe</strong></div>
-            </div>
-          </article>
-        </section>
 
-        <section class="stack-column middle-column">
-          <article class="panel">
-            <div class="panel-heading"><div><p class="panel-kicker">Mode Selection</p><h2>Training Controls</h2></div></div>
-            <div class="toolbar-row four-fields">
-              <label class="dense-field">Mode<select id="train-mode"><option value="lora">Z-Image LoRA</option><option value="full_finetune">Z-Image Full Finetune</option></select></label>
-              <label class="dense-field">Hardware Preset<select id="hardware-preset"><option value="rtx3090">RTX 3090 (24GB)</option><option value="h100">H100 (80GB)</option></select></label>
-              <label class="dense-field">GPU Device<select id="gpu-device"><option value="">Loading GPUs...</option></select></label>
-              <label class="dense-field">Mixed Precision<select id="mixed-precision"><option value="bf16">bf16</option><option value="fp16">fp16</option></select></label>
+            <div class="field">
+              <label for="vae-path">VAE Path <span class="text-muted">(Wan2.1_VAE.pth or .safetensors)</span></label>
+              <input id="vae-path" value="E:/models/wan22/wan_2.1_vae.safetensors" />
             </div>
-            <div class="toolbar-row action-row"><button id="refresh-gpus" class="ghost-action small">Refresh GPUs</button><p id="gpu-status" class="status-line inline-status">GPU inventory not loaded yet.</p></div>
-          </article>
 
-          <article class="panel">
-            <div class="panel-heading compact"><div><p class="panel-kicker">Dataset</p><h2>Input Set</h2></div><button id="generate-dataset" class="primary-action">Generate Dataset Config</button></div>
-            <div class="dataset-dir-block">
-              <div class="dataset-dir-toolbar">
-                <span class="dataset-dir-label">Dataset Directories</span>
-                <button id="add-dataset-dir" type="button" class="ghost-action small">Add Dataset</button>
+            <div class="field">
+              <label for="t5-path">T5 Path <span class="text-muted">(umt5-xxl)</span></label>
+              <input id="t5-path" value="E:/models/wan22/umt5_xxl_fp8_e4m3fn_scaled.safetensors" />
+            </div>
+
+            <div class="field">
+              <label for="dit-path">DiT Path <span class="text-muted" id="dit-label">(Low Noise)</span></label>
+              <input id="dit-path" value="E:/models/wan22/wan2.2_i2v_low_noise_fp16.safetensors" />
+            </div>
+
+            <div class="field" id="dit-high-noise-field">
+              <label for="dit-high-noise-path">DiT High Noise Path</label>
+              <input id="dit-high-noise-path" value="E:/models/wan22/wan2.2_i2v_high_noise_fp16.safetensors" />
+            </div>
+
+            <div id="model-check-results"></div>
+            <p id="model-status" class="status-line">Model paths not verified yet.</p>
+          </div>
+
+          <!-- Dataset Panel -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Dataset</div>
+                <div class="card-title">Training Data</div>
               </div>
-              <div id="dataset-dir-list" class="dataset-dir-list"></div>
+              <button id="generate-dataset" class="btn btn-teal btn-sm">Generate Config</button>
             </div>
-            <div class="inline-grid four-up">
-              <label>Width<input id="width" type="number" value="1024" /></label>
-              <label>Height<input id="height" type="number" value="1024" /></label>
-              <label>Batch Size<input id="batch-size" type="number" value="1" /></label>
-              <label>Epochs<input id="max-train-epochs" type="number" value="12" /></label>
-            </div>
-            <div class="toggle-grid">
-              <label class="toggle-card"><input id="enable-bucket" type="checkbox" checked /><span>Enable Bucket</span></label>
-              <label class="toggle-card"><input id="bucket-no-upscale" type="checkbox" /><span>Bucket No Upscale</span></label>
-              <label class="toggle-card"><input id="persistent-workers" type="checkbox" checked /><span>Persistent Workers</span></label>
-              <label class="toggle-card"><input id="gradient-checkpointing" type="checkbox" checked /><span>Gradient Checkpointing</span></label>
-            </div>
-            <pre id="dataset-preview" class="console-box">Dataset config preview will appear here.</pre>
-          </article>
 
-          <article id="lora-controls" class="panel mode-panel active-mode">
-            <div class="panel-heading compact"><div><p class="panel-kicker">LoRA</p><h2>LoRA Controls</h2></div></div>
-            <div class="inline-grid four-up">
-              <label>Learning Rate<input id="lora-learning-rate" type="number" step="0.00001" value="0.0001" /></label>
-              <label>Network Dim<input id="network-dim" type="number" value="32" /></label>
-              <label>Network Alpha<input id="network-alpha" type="number" value="32" /></label>
-              <label>Save Every N Epochs<input id="save-every-n-epochs" type="number" value="1" /></label>
+            <div>
+              <div class="flex-row" style="justify-content:space-between; margin-bottom:8px;">
+                <span class="text-muted">Video Directories</span>
+                <button id="add-video-dir" class="btn btn-ghost btn-sm">+ Add</button>
+              </div>
+              <div id="video-dir-list" class="dir-list"></div>
             </div>
-            <div class="toolbar-row three-fields">
-              <label class="dense-field">Optimizer<select id="lora-optimizer-type"><option value="adamw8bit">adamw8bit</option><option value="adafactor">adafactor</option></select></label>
-              <label class="dense-field">LR Scheduler<select id="lr-scheduler"><option value="constant_with_warmup">constant_with_warmup</option><option value="constant">constant</option></select></label>
-              <label class="dense-field">Warmup Steps<input id="lr-warmup-steps" type="number" value="10" /></label>
-            </div>
-          </article>
 
-          <article id="full-controls" class="panel mode-panel hidden-mode">
-            <div class="panel-heading compact"><div><p class="panel-kicker">Finetune</p><h2>Full Finetune Controls</h2></div></div>
-            <div class="inline-grid four-up">
-              <label>Learning Rate<input id="full-learning-rate" type="number" step="0.000001" value="0.000001" /></label>
-              <label>Save Every N Epochs<input id="full-save-every-n-epochs" type="number" value="1" /></label>
-              <label>Blocks To Swap<input id="blocks-to-swap" type="number" value="0" /></label>
-              <label>Seed<input id="seed" type="number" value="42" /></label>
+            <div class="fields-row two">
+              <div class="field">
+                <label for="res-width">Width</label>
+                <input id="res-width" type="number" value="832" />
+              </div>
+              <div class="field">
+                <label for="res-height">Height</label>
+                <input id="res-height" type="number" value="480" />
+              </div>
             </div>
-            <div class="toolbar-row three-fields">
-              <label class="dense-field">Optimizer<select id="full-optimizer-type"><option value="adafactor">adafactor</option><option value="adamw">adamw</option></select></label>
-              <label class="dense-field">LR Scheduler<select id="full-lr-scheduler"><option value="constant_with_warmup">constant_with_warmup</option><option value="constant">constant</option></select></label>
-              <label class="dense-field">Warmup Steps<input id="full-lr-warmup-steps" type="number" value="10" /></label>
-            </div>
-            <div class="toggle-grid">
-              <label class="toggle-card"><input id="fused-backward-pass" type="checkbox" checked /><span>Fused Backward Pass</span></label>
-              <label class="toggle-card"><input id="full-bf16" type="checkbox" /><span>Full BF16</span></label>
-              <label class="toggle-card"><input id="sdpa" type="checkbox" checked /><span>Use SDPA</span></label>
-            </div>
-          </article>
-        </section>
 
-        <section class="stack-column right-column">
-          <article class="panel run-panel">
-            <div class="panel-heading compact"><div><p class="panel-kicker">Execution</p><h2>Prepare & Train</h2></div></div>
-            <div class="run-actions">
-              <button id="cache-latents" class="secondary-action">Cache Latents</button>
-              <button id="cache-text" class="secondary-action">Cache Text Encoder</button>
-              <button id="start-training" class="primary-action large">Start Training</button>
-              <button id="refresh-task" class="ghost-action">Refresh Task</button>
-              <button id="stop-task" class="danger-action">Stop Task</button>
+            <div class="fields-row four">
+              <div class="field">
+                <label for="target-frames">Target Frames</label>
+                <select id="target-frames">
+                  <option value="17">17</option>
+                  <option value="33">33</option>
+                  <option value="49">49</option>
+                  <option value="81" selected>81</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="frame-extraction">Frame Extraction</label>
+                <select id="frame-extraction">
+                  <option value="head" selected>head</option>
+                  <option value="chunk">chunk</option>
+                  <option value="slide">slide</option>
+                  <option value="uniform">uniform</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="dataset-fps">FPS</label>
+                <input id="dataset-fps" type="number" value="16" />
+              </div>
+              <div class="field">
+                <label for="batch-size">Batch Size</label>
+                <input id="batch-size" type="number" value="1" />
+              </div>
             </div>
-            <div class="status-stack">
-              <p id="prepare-status" class="status-line">Preparation tasks have not started.</p>
-              <p id="train-status" class="status-line">No active training task.</p>
-            </div>
-          </article>
 
-          <article class="panel log-panel">
-            <div class="panel-heading compact"><div><p class="panel-kicker">Monitor</p><h2>Task Log</h2></div><span id="log-badge" class="log-badge">Idle</span></div>
-            <pre id="log-output" class="console-box tall-console">Logs will appear here.</pre>
-          </article>
-        </section>
+            <div class="field">
+              <label>Resolution Presets</label>
+              <div class="flex-row gap-4">
+                <button class="btn btn-ghost btn-sm res-preset" data-w="832"  data-h="480">832×480</button>
+                <button class="btn btn-ghost btn-sm res-preset" data-w="1280" data-h="720">1280×720</button>
+                <button class="btn btn-ghost btn-sm res-preset" data-w="480"  data-h="832">480×832 ↕</button>
+                <button class="btn btn-ghost btn-sm res-preset" data-w="720"  data-h="1280">720×1280 ↕</button>
+              </div>
+            </div>
+
+            <pre id="dataset-preview" class="console-box short">Dataset config preview will appear here.</pre>
+            <p id="dataset-status" class="status-line">No dataset config generated yet.</p>
+          </div>
+        </div>
+
+        <!-- Row 2: Training Config —— WAN 2.2 -->
+        <div class="card" id="wan22-training-panel">
+          <div class="card-header">
+            <div>
+              <div class="card-kicker">Training</div>
+              <div class="card-title">LoRA Hyperparameters</div>
+            </div>
+          </div>
+
+          <div class="fields-row four">
+            <div class="field">
+              <label for="learning-rate">Learning Rate</label>
+              <input id="learning-rate" type="number" step="0.00001" value="0.0002" />
+            </div>
+            <div class="field">
+              <label for="network-dim">Network Dim</label>
+              <input id="network-dim" type="number" value="32" />
+            </div>
+            <div class="field">
+              <label for="network-alpha">Network Alpha</label>
+              <input id="network-alpha" type="number" value="32" />
+            </div>
+            <div class="field">
+              <label for="max-train-epochs">Epochs</label>
+              <input id="max-train-epochs" type="number" value="16" />
+            </div>
+          </div>
+
+          <div class="fields-row four">
+            <div class="field">
+              <label for="gpu-index">GPU IDs <span class="text-muted">(e.g. 0,1)</span></label>
+              <input id="gpu-index" type="text" placeholder="All GPUs" value="" />
+            </div>
+            <div class="field"></div><div class="field"></div><div class="field"></div>
+          </div>
+          <div class="fields-row four">
+            <div class="field">
+              <label for="optimizer-type">Optimizer</label>
+              <select id="optimizer-type">
+                <option value="adamw8bit" selected>adamw8bit</option>
+                <option value="adafactor">adafactor</option>
+                <option value="adamw">adamw</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="lr-scheduler">LR Scheduler</label>
+              <select id="lr-scheduler">
+                <option value="constant_with_warmup" selected>constant_with_warmup</option>
+                <option value="constant">constant</option>
+                <option value="cosine">cosine</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="lr-warmup-steps">Warmup Steps</label>
+              <input id="lr-warmup-steps" type="number" value="10" />
+            </div>
+            <div class="field">
+              <label for="save-every-n-epochs">Save Every N Epochs</label>
+              <input id="save-every-n-epochs" type="number" value="1" />
+            </div>
+          </div>
+
+          <!-- Advanced / Timestep -->
+          <details class="collapsible" id="advanced-section">
+            <summary>Advanced Options — Timestep, Memory, Precision</summary>
+            <div class="collapsible-body">
+
+              <div class="fields-row three">
+                <div class="field">
+                  <label for="timestep-sampling">Timestep Sampling</label>
+                  <select id="timestep-sampling">
+                    <option value="shift" selected>shift</option>
+                    <option value="uniform">uniform</option>
+                    <option value="sigmoid">sigmoid</option>
+                    <option value="flux">flux</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="discrete-flow-shift">Flow Shift <span class="text-muted">(I2V≈5, T2V≈12)</span></label>
+                  <input id="discrete-flow-shift" type="number" step="0.5" value="5.0" />
+                </div>
+                <div class="field">
+                  <label for="seed">Seed</label>
+                  <input id="seed" type="number" value="42" />
+                </div>
+              </div>
+
+              <!-- Timestep range (single-model only) -->
+              <div id="timestep-range-fields">
+                <div class="fields-row two">
+                  <div class="field">
+                    <label for="min-timestep">Min Timestep <span class="text-muted">(0–1000)</span></label>
+                    <input id="min-timestep" type="number" value="0" min="0" max="1000" />
+                  </div>
+                  <div class="field">
+                    <label for="max-timestep">Max Timestep <span class="text-muted">(0–1000)</span></label>
+                    <input id="max-timestep" type="number" value="1000" min="0" max="1000" />
+                  </div>
+                </div>
+                <p class="text-muted mt-4">Low-noise only: 0–900 (I2V) / 0–875 (T2V). High-noise only: 900–1000 / 875–1000.</p>
+              </div>
+
+              <!-- Dual-model timestep boundary -->
+              <div id="timestep-boundary-fields" class="hidden">
+                <div class="field">
+                  <label for="timestep-boundary">Timestep Boundary <span class="text-muted">(0.0–1.0; default 0.9 I2V / 0.875 T2V)</span></label>
+                  <input id="timestep-boundary" type="number" step="0.01" value="-1" min="-1" max="1" />
+                  <span class="text-muted">-1 = use model default</span>
+                </div>
+              </div>
+
+              <div class="fields-row two">
+                <div class="field">
+                  <label for="mixed-precision">Mixed Precision</label>
+                  <select id="mixed-precision">
+                    <option value="bf16" selected>bf16</option>
+                    <option value="fp16">fp16</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="blocks-to-swap">Blocks to Swap <span class="text-muted">(0 = off, max 39)</span></label>
+                  <input id="blocks-to-swap" type="number" value="0" min="0" max="39" />
+                </div>
+              </div>
+
+              <div class="toggle-row">
+                <label class="toggle-item">
+                  <input type="checkbox" id="fp8-base" checked />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">fp8_base</span>
+                </label>
+                <label class="toggle-item">
+                  <input type="checkbox" id="gradient-checkpointing" checked />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">Gradient Checkpointing</span>
+                </label>
+                <label class="toggle-item">
+                  <input type="checkbox" id="sdpa" checked />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">SDPA</span>
+                </label>
+                <label class="toggle-item">
+                  <input type="checkbox" id="offload-inactive-dit" />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">Offload Inactive DiT</span>
+                </label>
+                <label class="toggle-item">
+                  <input type="checkbox" id="preserve-dist-shape" />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">Preserve Distribution Shape</span>
+                </label>
+                <label class="toggle-item">
+                  <input type="checkbox" id="persistent-workers" checked />
+                  <span class="toggle-check"></span>
+                  <span class="toggle-label">Persistent Workers</span>
+                </label>
+              </div>
+
+            </div>
+          </details>
+        </div>
+
+        <!-- Row 3: Run + Log -->
+        <div class="content-columns" id="wan22-run-row">
+
+          <!-- Run Panel -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Execution</div>
+                <div class="card-title">Prepare & Train</div>
+              </div>
+              <button id="stop-task" class="btn btn-danger btn-sm">Stop Task</button>
+            </div>
+
+            <div class="step-buttons">
+              <button id="cache-latents" class="step-button" type="button">
+                <span class="step-num" id="step1-num">1</span>
+                <span class="step-text">
+                  <span class="step-name">Cache Latents</span>
+                  <span class="step-desc">Encode video frames with VAE</span>
+                </span>
+              </button>
+
+              <button id="cache-text-encoder" class="step-button" type="button">
+                <span class="step-num" id="step2-num">2</span>
+                <span class="step-text">
+                  <span class="step-name">Cache Text Encoder</span>
+                  <span class="step-desc">Encode captions with T5</span>
+                </span>
+              </button>
+
+              <button id="start-training" class="step-button" type="button">
+                <span class="step-num" id="step3-num">3</span>
+                <span class="step-text">
+                  <span class="step-name">Start Training</span>
+                  <span class="step-desc">Launch via accelerate</span>
+                </span>
+              </button>
+            </div>
+
+            <!-- Extra latent cache options -->
+            <details class="collapsible">
+              <summary>Cache Options</summary>
+              <div class="collapsible-body">
+                <div class="toggle-row">
+                  <label class="toggle-item">
+                    <input type="checkbox" id="i2v-mode" checked />
+                    <span class="toggle-check"></span>
+                    <span class="toggle-label">I2V (--i2v)</span>
+                  </label>
+                  <label class="toggle-item">
+                    <input type="checkbox" id="vae-cache-cpu" />
+                    <span class="toggle-check"></span>
+                    <span class="toggle-label">VAE Cache CPU</span>
+                  </label>
+                  <label class="toggle-item">
+                    <input type="checkbox" id="fp8-t5" />
+                    <span class="toggle-check"></span>
+                    <span class="toggle-label">fp8 T5</span>
+                  </label>
+                </div>
+                <div class="fields-row two">
+                  <div class="field">
+                    <label for="te-batch-size">T5 Batch Size</label>
+                    <input id="te-batch-size" type="number" value="16" />
+                  </div>
+                  <div class="field">
+                    <label for="gpu-index">GPU Device Index</label>
+                    <input id="gpu-index" value="" placeholder="Leave blank = all" />
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <div>
+              <p id="run-status" class="status-line">Ready to run.</p>
+              <p id="task-id-line" class="text-muted text-mono mt-4"></p>
+            </div>
+
+            <!-- Training Summary -->
+            <div class="summary-grid" id="training-summary">
+              <div class="summary-item">
+                <span class="s-label">Task</span>
+                <span class="s-value" id="sum-task">i2v-A14B</span>
+              </div>
+              <div class="summary-item">
+                <span class="s-label">Mode</span>
+                <span class="s-value" id="sum-mode">Dual Model</span>
+              </div>
+              <div class="summary-item">
+                <span class="s-label">Epochs</span>
+                <span class="s-value" id="sum-epochs">16</span>
+              </div>
+              <div class="summary-item">
+                <span class="s-label">LR</span>
+                <span class="s-value" id="sum-lr">2e-4</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Log Panel -->
+          <div class="card" style="flex:1;">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Monitor</div>
+                <div class="card-title">Task Log</div>
+              </div>
+              <div class="flex-row gap-8">
+                <button id="refresh-task" class="btn btn-ghost btn-sm">Refresh</button>
+                <span id="log-badge" class="log-badge">Idle</span>
+              </div>
+            </div>
+            <pre id="log-output" class="console-box tall">Logs will appear here once a task is running.</pre>
+          </div>
+
+        </div>
+
+        <!-- ═══════════════ Z-IMAGE PANELS (hidden by default) ═══════════════ -->
+
+        <!-- Z-Image Models + Dataset -->
+        <div class="content-columns hidden" id="zimage-top-row">
+
+          <!-- Z-Image Models -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Z-Image Models</div>
+                <div class="card-title">Base Assets</div>
+              </div>
+              <div class="flex-row gap-4">
+                <button id="zi-check-models" class="btn btn-ghost btn-sm">Check Paths</button>
+                <button id="zi-download-all-assets" class="btn btn-secondary btn-sm">Download All</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="zi-dit-path">DiT Path</label>
+              <input id="zi-dit-path" value="E:/models/zimage/split_files/diffusion_models/z_image_bf16.safetensors" />
+            </div>
+            <div class="field">
+              <label for="zi-vae-path">VAE Path</label>
+              <input id="zi-vae-path" value="E:/models/zimage/split_files/vae/ae.safetensors" />
+            </div>
+            <div class="field">
+              <label for="zi-text-encoder-path">Text Encoder Path</label>
+              <input id="zi-text-encoder-path" value="E:/models/zimage/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors" />
+            </div>
+            <div id="zi-model-check-results"></div>
+            <p id="zi-model-status" class="status-line">Model paths not verified yet.</p>
+          </div>
+
+          <!-- Z-Image Dataset -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Z-Image Dataset</div>
+                <div class="card-title">Image Training Data</div>
+              </div>
+              <button id="zi-generate-dataset" class="btn btn-teal btn-sm">Generate Config</button>
+            </div>
+            <div>
+              <div class="flex-row" style="justify-content:space-between; margin-bottom:8px;">
+                <span class="text-muted">Image Directories</span>
+                <button id="zi-add-image-dir" class="btn btn-ghost btn-sm">+ Add</button>
+              </div>
+              <div id="zi-image-dir-list" class="dir-list"></div>
+            </div>
+            <div class="fields-row four">
+              <div class="field">
+                <label for="zi-res-width">Width</label>
+                <input id="zi-res-width" type="number" value="1024" />
+              </div>
+              <div class="field">
+                <label for="zi-res-height">Height</label>
+                <input id="zi-res-height" type="number" value="1024" />
+              </div>
+              <div class="field">
+                <label for="zi-batch-size">Batch Size</label>
+                <input id="zi-batch-size" type="number" value="1" />
+              </div>
+              <div class="field">
+                <label for="zi-epochs">Epochs</label>
+                <input id="zi-epochs" type="number" value="12" />
+              </div>
+            </div>
+            <pre id="zi-dataset-preview" class="console-box short">Dataset config preview will appear here.</pre>
+            <p id="zi-dataset-status" class="status-line">No dataset config generated yet.</p>
+          </div>
+        </div>
+
+        <!-- Z-Image Training Config -->
+        <div class="card hidden" id="zimage-training-panel">
+          <div class="card-header">
+            <div>
+              <div class="card-kicker">Z-Image Training</div>
+              <div class="card-title">LoRA / Finetune Hyperparameters</div>
+            </div>
+          </div>
+          <div class="fields-row four">
+            <div class="field">
+              <label for="zi-gpu-index">GPU IDs <span class="text-muted">(e.g. 0,1)</span></label>
+              <input id="zi-gpu-index" type="text" placeholder="All GPUs" value="" />
+            </div>
+            <div class="field"></div><div class="field"></div><div class="field"></div>
+          </div>
+          <div class="fields-row four">
+            <div class="field">
+              <label for="zi-train-mode">Mode</label>
+              <select id="zi-train-mode">
+                <option value="lora">LoRA</option>
+                <option value="full_finetune">Full Finetune</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="zi-learning-rate">Learning Rate</label>
+              <input id="zi-learning-rate" type="number" step="0.00001" value="0.0001" />
+            </div>
+            <div class="field">
+              <label for="zi-network-dim">Network Dim</label>
+              <input id="zi-network-dim" type="number" value="32" />
+            </div>
+            <div class="field">
+              <label for="zi-network-alpha">Network Alpha</label>
+              <input id="zi-network-alpha" type="number" value="32" />
+            </div>
+          </div>
+          <div class="fields-row four">
+            <div class="field">
+              <label for="zi-optimizer">Optimizer</label>
+              <select id="zi-optimizer">
+                <option value="adamw8bit">adamw8bit</option>
+                <option value="adafactor">adafactor</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="zi-lr-scheduler">LR Scheduler</label>
+              <select id="zi-lr-scheduler">
+                <option value="constant_with_warmup">constant_with_warmup</option>
+                <option value="constant">constant</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="zi-warmup-steps">Warmup Steps</label>
+              <input id="zi-warmup-steps" type="number" value="10" />
+            </div>
+            <div class="field">
+              <label for="zi-save-every">Save Every N</label>
+              <input id="zi-save-every" type="number" value="1" />
+            </div>
+          </div>
+
+          <div class="fields-row four">
+            <div class="field">
+              <label for="zi-timestep-sampling">Timestep Sampling</label>
+              <select id="zi-timestep-sampling">
+                <option value="shift" selected>shift</option>
+                <option value="uniform">uniform</option>
+                <option value="sigmoid">sigmoid</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="zi-weighting-scheme">Weighting Scheme</label>
+              <select id="zi-weighting-scheme">
+                <option value="none" selected>none</option>
+                <option value="logit_normal">logit_normal</option>
+                <option value="mode">mode</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="zi-discrete-flow-shift">Flow Shift</label>
+              <input id="zi-discrete-flow-shift" type="number" step="0.5" value="2.0" />
+            </div>
+            <div class="field">
+              <label for="zi-blocks-to-swap">Blocks to Swap</label>
+              <input id="zi-blocks-to-swap" type="number" value="0" />
+            </div>
+          </div>
+          
+          <div class="fields-row two" style="grid-template-columns: 2fr 1fr;">
+            <div class="field">
+              <label for="zi-optimizer-args">Optimizer Args <span class="text-muted">(Adafactor)</span></label>
+              <input id="zi-optimizer-args" type="text" value='relative_step=False scale_parameter=False warmup_init=False' />
+            </div>
+            <div class="field">
+              <label for="zi-max-grad-norm">Max Grad Norm</label>
+              <input id="zi-max-grad-norm" type="number" step="0.1" value="0.0" />
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-item">
+              <input type="checkbox" id="zi-gradient-checkpointing" checked />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">Gradient Checkpointing</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="zi-sdpa" />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">SDPA</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="zi-fused-backward" checked />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">Fused Backward</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="zi-full-bf16" />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">Full BF16</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Z-Image Run + Log -->
+        <div class="content-columns hidden" id="zimage-run-row">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Z-Image Execution</div>
+                <div class="card-title">Prepare &amp; Train</div>
+              </div>
+              <button id="stop-task" class="btn btn-danger btn-sm">Stop Task</button>
+            </div>
+            <div class="step-buttons">
+              <button id="zi-cache-latents" class="step-button" type="button">
+                <span class="step-num" id="zi-step1-num">1</span>
+                <span class="step-text">
+                  <span class="step-name">Cache Latents</span>
+                  <span class="step-desc">Encode images with VAE</span>
+                </span>
+              </button>
+              <button id="zi-cache-text-encoder" class="step-button" type="button">
+                <span class="step-num" id="zi-step2-num">2</span>
+                <span class="step-text">
+                  <span class="step-name">Cache Text Encoder</span>
+                  <span class="step-desc">Encode captions with Qwen</span>
+                </span>
+              </button>
+              <button id="zi-start-training" class="step-button" type="button">
+                <span class="step-num" id="zi-step3-num">3</span>
+                <span class="step-text">
+                  <span class="step-name">Start Training</span>
+                  <span class="step-desc">Launch Z-Image LoRA/full</span>
+                </span>
+              </button>
+            </div>
+            <p id="zi-run-status" class="status-line">Ready to run.</p>
+          </div>
+
+          <!-- Shared log panel -->
+          <div class="card" style="flex:1;">
+            <div class="card-header">
+              <div>
+                <div class="card-kicker">Monitor</div>
+                <div class="card-title">Task Log</div>
+              </div>
+              <div class="flex-row gap-8">
+                <button id="zi-refresh-task" class="btn btn-ghost btn-sm">Refresh</button>
+                <span id="zi-log-badge" class="log-badge">Idle</span>
+              </div>
+            </div>
+            <pre id="zi-log-output" class="console-box tall">Logs will appear here.</pre>
+          </div>
+        </div>
+
+        <!-- ──────────────── TASKS PAGE CONTENT ──────────────── -->
+        <div id="tasks-content" class="config-grid hidden">
+          <!-- GPU Monitor Card -->
+          <div class="card" style="grid-column: 1 / -1; margin-top:20px;">
+            <div class="card-kicker">Hardware</div>
+            <div class="card-title">Live GPU Monitor</div>
+            <div id="tasks-gpu-dashboard" style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap;">
+               <div class="text-muted" style="padding:16px;">Loading GPU hardware metrics...</div>
+            </div>
+          </div>
+
+          <!-- Task Queue Card -->
+          <div class="card" style="grid-column: 1 / -1;">
+            <div class="flex-row" style="justify-content:space-between; margin-bottom:16px;">
+              <div>
+                <div class="card-kicker">History</div>
+                <div class="card-title">Training Task Queue</div>
+              </div>
+              <button id="refresh-tasks-btn" class="btn btn-ghost btn-sm">Refresh</button>
+            </div>
+            
+            <div class="table-container" style="overflow-x:auto;">
+              <table style="width:100%; text-align:left; border-collapse:collapse; font-size:0.95rem;">
+                <thead>
+                  <tr style="border-bottom:1px solid var(--border); color:var(--text-muted);">
+                    <th style="padding:14px 12px; font-weight:600;">Time</th>
+                    <th style="padding:14px 12px; font-weight:600;">ID</th>
+                    <th style="padding:14px 12px; font-weight:600;">Type</th>
+                    <th style="padding:14px 12px; font-weight:600;">Status</th>
+                    <th style="padding:14px 12px; font-weight:600;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="task-table-body">
+                  <tr><td colspan="5" style="padding:24px; text-align:center;" class="text-muted">Loading tasks...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
-    <script src="/static/app.js" defer></script>
+    <script src="/static/app.js"></script>
   </body>
 </html>

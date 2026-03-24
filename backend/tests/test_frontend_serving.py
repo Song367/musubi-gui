@@ -3,36 +3,25 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-def test_root_serves_redesigned_console_shell():
+def test_root_serves_wan22_console():
     client = TestClient(app)
     response = client.get("/")
 
     assert response.status_code == 200
     body = response.text
-    assert "Training Workspace" in body
-    assert "GPU Device" in body
-    assert "Refresh GPUs" in body
-    assert "Asset Downloads" in body
-    assert "Apply Official Templates" in body
-    assert "Download All Base Assets" in body
-    assert "DiT Asset" in body
-    assert "VAE Asset" in body
-    assert "Text Encoder Asset" in body
-    assert "Check Installed Paths" in body
-    assert "Download DiT" in body
-    assert "Download VAE" in body
-    assert "Download Text Encoder" in body
-    assert "RTX 3090 (24GB)" in body
-    assert "H100 (80GB)" in body
-    assert 'type="checkbox"' in body
+    assert "Wan 2.2" in body
+    assert "DiT" in body or "dit" in body
+    assert "VAE" in body or "vae" in body
+    assert "T5" in body or "t5" in body
+    assert "Cache Latents" in body
+    assert "Start Training" in body
 
 
-def test_frontend_supports_multiple_dataset_directories():
+def test_frontend_supports_multiple_video_directories():
     client = TestClient(app)
     response = client.get("/")
 
     assert response.status_code == 200
     body = response.text
-    assert "Add Dataset" in body
-    assert "dataset-dir-list" in body
-
+    assert "add-video-dir" in body
+    assert "video-dir-list" in body

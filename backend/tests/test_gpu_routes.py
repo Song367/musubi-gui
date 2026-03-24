@@ -1,4 +1,4 @@
-﻿from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient
 
 from app.main import app
 
@@ -23,11 +23,13 @@ def test_gpu_route_returns_gpu_entries(monkeypatch):
     assert response.json()[1]["name"] == "RTX 3090"
 
 
-def test_model_sources_route_returns_official_sources():
+def test_model_sources_route_returns_wan22_sources():
     client = TestClient(app)
     response = client.get("/api/models/sources")
 
     assert response.status_code == 200
     names = {item["id"] for item in response.json()}
-    assert "zimage_base_official" in names
-    assert "zimage_comfy" in names
+    assert "wan22_dit_lownoise_i2v" in names
+    assert "wan22_dit_highnoise_i2v" in names
+    assert "wan22_vae" in names
+    assert "wan22_t5" in names

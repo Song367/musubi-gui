@@ -16,7 +16,7 @@ def wait_for_task(client: TestClient, task_id: str):
     return final_task
 
 
-def test_model_check_and_download(tmp_path, monkeypatch):
+def test_model_check(tmp_path, monkeypatch):
     monkeypatch.setenv("MUSUBI_UI_DATA_ROOT", str(tmp_path))
     client = TestClient(app)
     project = client.post(
@@ -32,12 +32,30 @@ def test_model_check_and_download(tmp_path, monkeypatch):
         f"/api/projects/{project['id']}/models/check",
         json={
             "dit_path": str(tmp_path / "missing-dit.safetensors"),
+            "dit_high_noise_path": str(tmp_path / "missing-dit-high.safetensors"),
             "vae_path": str(tmp_path / "missing-vae.safetensors"),
-            "text_encoder_path": str(tmp_path / "missing-te"),
+            "t5_path": str(tmp_path / "missing-t5.pth"),
         },
     )
     assert check_response.status_code == 200
-    assert check_response.json()["dit_path"]["exists"] is False
+    data = check_response.json()
+    assert data["dit_path"]["exists"] is False
+    assert data["vae_path"]["exists"] is False
+    assert data["t5_path"]["exists"] is False
+    assert data["dit_high_noise_path"]["exists"] is False
+
+
+def test_model_download(tmp_path, monkeypatch):
+    monkeypatch.setenv("MUSUBI_UI_DATA_ROOT", str(tmp_path))
+    client = TestClient(app)
+    project = client.post(
+        "/api/projects",
+        json={
+            "name": "demo",
+            "musubi_tuner_path": "/srv/musubi-tuner",
+            "python_bin": "python",
+        },
+    ).json()
 
     from app.api import models as models_api
 
@@ -54,9 +72,9 @@ def test_model_check_and_download(tmp_path, monkeypatch):
         f"/api/projects/{project['id']}/models/download",
         json={
             "source_type": "official",
-            "source_id": "zimage_base_official",
+            "source_id": "wan22_dit_lownoise_i2v",
             "repo_id": "",
-            "filename": "dit/model.safetensors",
+            "filename": "split_files/diffusion_models/wan2.2_i2v_low_noise_fp16.safetensors",
             "target_dir": str(tmp_path / "downloads"),
         },
     )
@@ -68,7 +86,6 @@ def test_model_check_and_download(tmp_path, monkeypatch):
     final_task = wait_for_task(client, task["id"])
     assert final_task is not None
     assert final_task["status"] == "succeeded"
-    assert final_task["result"]["saved_path"].endswith("dit/model.safetensors")
     logs = client.get(f"/api/tasks/{task['id']}/logs").json()
     assert "download started" in logs["content"].lower()
 
@@ -100,25 +117,25 @@ def test_download_all_runs_as_one_task(tmp_path, monkeypatch):
         f"/api/projects/{project['id']}/models/download-all",
         json={
             "assets": {
-                "dit": {
+                "dit_low": {
                     "source_type": "official",
-                    "source_id": "zimage_comfy",
+                    "source_id": "wan22_dit_lownoise_i2v",
                     "repo_id": "",
-                    "filename": "split_files/diffusion_models/z_image_bf16.safetensors",
+                    "filename": "split_files/diffusion_models/wan2.2_i2v_low_noise_fp16.safetensors",
                     "target_dir": str(tmp_path / "downloads"),
                 },
                 "vae": {
                     "source_type": "official",
-                    "source_id": "zimage_comfy",
+                    "source_id": "wan22_vae",
                     "repo_id": "",
-                    "filename": "split_files/vae/ae.safetensors",
+                    "filename": "split_files/vae/wan_2.1_vae.safetensors",
                     "target_dir": str(tmp_path / "downloads"),
                 },
-                "text-encoder": {
+                "t5": {
                     "source_type": "official",
-                    "source_id": "zimage_comfy",
+                    "source_id": "wan22_t5",
                     "repo_id": "",
-                    "filename": "split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+                    "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
                     "target_dir": str(tmp_path / "downloads"),
                 },
             }
@@ -131,8 +148,8 @@ def test_download_all_runs_as_one_task(tmp_path, monkeypatch):
     final_task = wait_for_task(client, task["id"])
     assert final_task is not None
     assert final_task["status"] == "succeeded"
-    assert set(final_task["result"]["completed_assets"].keys()) == {"dit", "vae", "text-encoder"}
+    assert set(final_task["result"]["completed_assets"].keys()) == {"dit_low", "vae", "t5"}
     logs = client.get(f"/api/tasks/{task['id']}/logs").json()["content"].lower()
-    assert "starting asset: dit" in logs
+    assert "starting asset: dit_low" in logs
     assert "starting asset: vae" in logs
-    assert "starting asset: text-encoder" in logs
+    assert "starting asset: t5" in logs

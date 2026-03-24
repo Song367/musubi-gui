@@ -47,11 +47,11 @@
             </div>
             <div class="field">
               <label for="musubi-path">Musubi Tuner Path</label>
-              <input id="musubi-path" value="E:/workplace/musubi-tuner" />
+              <input id="musubi-path" value="/musubi-tuner" />
             </div>
             <div class="field">
               <label for="python-bin">Python Executable</label>
-              <input id="python-bin" value="C:/Users/wades/.conda/envs/musubi/python.exe" />
+              <input id="python-bin" value="/usr/local/bin/python" />
             </div>
             <div class="flex-row">
               <button id="create-project" class="btn btn-primary btn-sm">Create Project</button>
@@ -88,7 +88,7 @@
           <div class="card">
             <div class="field">
               <label for="output-dir">Output Directory</label>
-              <input id="output-dir" value="E:/outputs/wan22" />
+              <input id="output-dir" value="/outputs/wan22" />
             </div>
             <div class="field">
               <label for="output-name">LoRA Name</label>
@@ -120,22 +120,22 @@
 
             <div class="field">
               <label for="vae-path">VAE Path <span class="text-muted">(Wan2.1_VAE.pth or .safetensors)</span></label>
-              <input id="vae-path" value="E:/models/wan22/wan_2.1_vae.safetensors" />
+              <input id="vae-path" value="/models/wan22/wan_2.1_vae.safetensors" />
             </div>
 
             <div class="field">
               <label for="t5-path">T5 Path <span class="text-muted">(umt5-xxl)</span></label>
-              <input id="t5-path" value="E:/models/wan22/umt5_xxl_fp8_e4m3fn_scaled.safetensors" />
+              <input id="t5-path" value="/models/wan22/umt5_xxl_fp8_e4m3fn_scaled.safetensors" />
             </div>
 
             <div class="field">
               <label for="dit-path">DiT Path <span class="text-muted" id="dit-label">(Low Noise)</span></label>
-              <input id="dit-path" value="E:/models/wan22/wan2.2_i2v_low_noise_fp16.safetensors" />
+              <input id="dit-path" value="/models/wan22/wan2.2_i2v_low_noise_fp16.safetensors" />
             </div>
 
             <div class="field" id="dit-high-noise-field">
               <label for="dit-high-noise-path">DiT High Noise Path</label>
-              <input id="dit-high-noise-path" value="E:/models/wan22/wan2.2_i2v_high_noise_fp16.safetensors" />
+              <input id="dit-high-noise-path" value="/models/wan22/wan2.2_i2v_high_noise_fp16.safetensors" />
             </div>
 
             <div id="model-check-results"></div>
@@ -512,15 +512,15 @@
             </div>
             <div class="field">
               <label for="zi-dit-path">DiT Path</label>
-              <input id="zi-dit-path" value="E:/models/zimage/split_files/diffusion_models/z_image_bf16.safetensors" />
+              <input id="zi-dit-path" value="/models/zimage/split_files/diffusion_models/z_image_bf16.safetensors" />
             </div>
             <div class="field">
               <label for="zi-vae-path">VAE Path</label>
-              <input id="zi-vae-path" value="E:/models/zimage/split_files/vae/ae.safetensors" />
+              <input id="zi-vae-path" value="/models/zimage/split_files/vae/ae.safetensors" />
             </div>
             <div class="field">
               <label for="zi-text-encoder-path">Text Encoder Path</label>
-              <input id="zi-text-encoder-path" value="E:/models/zimage/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors" />
+              <input id="zi-text-encoder-path" value="/models/zimage/split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors" />
             </div>
             <div id="zi-model-check-results"></div>
             <p id="zi-model-status" class="status-line">Model paths not verified yet.</p>

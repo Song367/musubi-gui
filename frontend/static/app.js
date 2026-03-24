@@ -683,8 +683,8 @@ function init() {
   });
 
   // Default dirs
-  addVideoDir('E:/datasets/wan22');
-  addImageDir('E:/datasets/zimage');
+  addVideoDir('/datasets/wan22');
+  addImageDir('/datasets/zimage');
 
   // Apply initial mode
   applyModelMode('dual');
@@ -697,7 +697,7 @@ function init() {
 // ── Download All Assets ────────────────────────────────────────────────────
 async function downloadAllAssets() {
   if (!state.projectId) { setStatus('model-status', 'Create a project first.', 'error'); return; }
-  const targetDir = 'E:/models/wan22';
+  const targetDir = '/models/wan22';
   const taskType = state.taskType;
 
   const ditLowId  = `wan22_dit_lownoise_${taskType}`;
@@ -735,7 +735,7 @@ async function downloadAllAssets() {
 // ── Z-Image Download All Assets ───────────────────────────────────────────
 async function ziDownloadAllAssets() {
   if (!state.projectId) { setStatus('zi-model-status', 'Create a project first.', 'error'); return; }
-  const targetDir = 'E:/models/zimage';
+  const targetDir = '/models/zimage';
 
   let defaults = {};
   try { defaults = await api('GET', '/api/models/sources/defaults'); } catch {}

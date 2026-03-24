@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  musubi-tuner-ui:
+    build: .
+    container_name: musubi-tuner-ui
+    ports:
+      - "8001:8001"
+    volumes:
+      # 挂载你的本地配置和数据目录（左边为你 Windows 的路径，右边为容器内的路径）
+      # 你可以将你 UI 里填的 E:/models 映射为 /models
+      - E:/models:/models
+      - E:/workplace/musubi-tuner:/musubi-tuner
+      - E:/outputs:/outputs
+      # (可选) 挂载项目代码方便开发热更新
+      # - ./backend:/app/backend
+      # - ./frontend:/app/frontend
+    environment:
+      - TZ=Asia/Shanghai
+    # 如果你在容器内需要访问 GPU（比如跑 musubi-tuner 或者调用 nvidia-smi 监控）
+    # 需要安装 NVIDIA Container Toolkit 并取消下方注释：
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]

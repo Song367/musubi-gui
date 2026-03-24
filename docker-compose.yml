@@ -17,6 +17,10 @@ services:
       # 映射相对目录下的 outputs 文件夹，作为跑出来的大模型的存放目标
       - ../outputs:/outputs
       
+      # 数据集目录：把服务器上真实的数据集目录穿透进容器
+      - /root/workplace/train_tools/ai-toolkit/datasets:/datasets
+
+      
     environment:
       - TZ=Asia/Shanghai
     

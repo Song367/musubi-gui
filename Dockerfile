@@ -17,8 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # ----------------- 究极炼丹炉依赖包 ----------------- #
-# 1. 强制安装携带 CUDA 12.8 引擎的 PyTorch 套件（匹配你的底层驱动）
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# 1. 回退到官方最稳定认证的 CUDA 12.4 引擎（因为高版本源缺少部分依赖记录会导致 pip 冲突）
+# 并先更新 pip 确保依赖解析器不会抽风
+RUN pip install -U pip && \
+    pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # 2. 从 musubi-tuner 的官方 pyproject.toml 中提取的全部深度学习、视觉及工具底层依赖
 RUN pip install --no-cache-dir \

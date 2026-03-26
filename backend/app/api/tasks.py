@@ -271,7 +271,7 @@ class ZImageTrainRequest(BaseModel):
     fused_backward_pass: bool = False
     full_bf16: bool = False
     blocks_to_swap: int = 0
-    sdpa: bool = False
+    sdpa: bool = True
     seed: int = 42
     gpu_index: str = ''
 
@@ -306,6 +306,9 @@ def zimage_prepare_text_encoder(project_id: str, payload: ZImageCacheRequest):
 @router.post("/api/projects/{project_id}/zimage/train", status_code=201)
 def zimage_train(project_id: str, payload: ZImageTrainRequest):
     project, dataset_config = _get_project_and_dataset(project_id)
+    # The current UI only exposes SDPA. Legacy projects may have saved sdpa=false,
+    # but musubi requires one attention backend for Z-Image training to start.
+    sdpa_enabled = True if not payload.sdpa else payload.sdpa
     command = build_zimage_train_command(
         mode=payload.mode,
         python_bin=project.python_bin,
@@ -335,7 +338,7 @@ def zimage_train(project_id: str, payload: ZImageTrainRequest):
         fused_backward_pass=payload.fused_backward_pass,
         full_bf16=payload.full_bf16,
         blocks_to_swap=payload.blocks_to_swap,
-        sdpa=payload.sdpa,
+        sdpa=sdpa_enabled,
         seed=payload.seed,
     )
     task_type = 'zimage_train_full' if payload.mode == 'full_finetune' else 'zimage_train_lora'

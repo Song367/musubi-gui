@@ -72,3 +72,12 @@ def test_frontend_uses_compatible_zimage_text_encoder_default():
     body = response.text
     assert "/models/zimage/split_files/text_encoders/qwen_3_4b.safetensors" in body
     assert "qwen_3_4b_fp8_mixed.safetensors" not in body
+
+
+def test_frontend_enables_zimage_sdpa_by_default():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert '<input type="checkbox" id="zi-sdpa" checked />' in body

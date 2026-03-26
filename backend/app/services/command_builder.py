@@ -247,9 +247,12 @@ def build_zimage_train_command(
     fused_backward_pass: bool = False,
     full_bf16: bool = False,
     blocks_to_swap: int = 0,
-    sdpa: bool = False,
+    sdpa: bool = True,
     seed: int = 42,
 ) -> list[str]:
+    # Z-Image training requires one attention backend. The current UI only
+    # exposes SDPA, so keep it enabled even when legacy saved state passes false.
+    sdpa = True if not sdpa else sdpa
     script_name = 'zimage_train.py' if mode == 'full_finetune' else 'zimage_train_network.py'
     command = [
         python_bin,

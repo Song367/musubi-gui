@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from app.services.command_builder import (
+    build_zimage_train_command,
     build_wan_cache_latents_command,
     build_wan_cache_text_encoder_command,
     build_wan_train_command,
@@ -177,3 +178,25 @@ class TestBuildWanTrainCommand:
     def test_blocks_to_swap_zero_omitted(self):
         cmd = build_wan_train_command(**self.BASE, blocks_to_swap=0)
         assert '--blocks_to_swap' not in cmd
+
+
+class TestBuildZImageTrainCommand:
+    BASE = dict(
+        mode='full_finetune',
+        python_bin=PYTHON,
+        musubi_tuner_path=MUSUBI,
+        dataset_config=DATASET,
+        dit_path='/models/zimage_dit.safetensors',
+        vae_path='/models/ae.safetensors',
+        text_encoder_path='/models/qwen_3_4b.safetensors',
+        output_dir='/outputs/zimage',
+        output_name='zimage-run',
+    )
+
+    def test_defaults_to_sdpa_attention_backend(self):
+        cmd = build_zimage_train_command(**self.BASE)
+        assert '--sdpa' in cmd
+
+    def test_keeps_sdpa_when_false_is_passed_from_legacy_state(self):
+        cmd = build_zimage_train_command(**self.BASE, sdpa=False)
+        assert '--sdpa' in cmd

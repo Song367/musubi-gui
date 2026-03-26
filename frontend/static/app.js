@@ -346,6 +346,15 @@ function syncDatasetPreviewSelector() {
   }
 }
 
+function selectPrimaryDatasetPreview() {
+  const select = $('zi-preview-dataset-select');
+  if (!select) return '';
+  const selected = getSelectedDatasetNames();
+  const target = selected[0] || '';
+  select.value = target;
+  return target;
+}
+
 function setProjectStatus(message, cls = '') {
   setStatus('project-status', message, cls);
 }
@@ -1215,6 +1224,7 @@ async function loadZImageDatasets() {
       picker.appendChild(option);
     });
     setSelectedDatasetNames(state.selectedDatasetNames);
+    selectPrimaryDatasetPreview();
     await loadSelectedDatasetPreview();
     await loadMergedDatasetPreview();
   } catch (e) {
@@ -1448,7 +1458,9 @@ function init() {
     await loadZImageDatasets();
   });
   $('zi-dataset-picker').addEventListener('change', async () => {
-    setSelectedDatasetNames(getSelectedDatasetNames());
+    const selectedNames = [...$('zi-dataset-picker').selectedOptions].map(option => option.value);
+    setSelectedDatasetNames(selectedNames);
+    selectPrimaryDatasetPreview();
     renderDatasetSamples('zi-merged-dataset-preview', [], 'Selection changed. Generate config again to refresh merged preview.');
     await loadSelectedDatasetPreview();
     scheduleProjectSave(true);

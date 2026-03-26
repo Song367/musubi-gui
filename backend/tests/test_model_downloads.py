@@ -156,3 +156,13 @@ def test_download_all_runs_as_one_task(tmp_path, monkeypatch):
     assert "starting asset: dit_low" in logs
     assert "starting asset: vae" in logs
     assert "starting asset: t5" in logs
+
+
+def test_model_source_defaults_use_compatible_zimage_text_encoder():
+    client = TestClient(app)
+
+    response = client.get("/api/models/sources/defaults")
+
+    assert response.status_code == 200
+    defaults = response.json()
+    assert defaults["zimage_text_encoder"] == "split_files/text_encoders/qwen_3_4b.safetensors"

@@ -73,7 +73,7 @@ DEFAULT_FILENAMES: dict[str, str] = {
     # Z-Image
     "zimage_dit": "split_files/diffusion_models/z_image_bf16.safetensors",
     "zimage_vae": "split_files/vae/ae.safetensors",
-    "zimage_text_encoder": "split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors",
+    "zimage_text_encoder": "split_files/text_encoders/qwen_3_4b.safetensors",
 }
 
 

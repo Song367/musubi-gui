@@ -1467,7 +1467,7 @@ async function ziDownloadAllAssets() {
            filename: defaults['zimage_vae'] || 'split_files/vae/ae.safetensors',
            target_dir: targetDir },
     te:  { source_type: 'official', source_id: 'zimage_text_encoder', asset: 'text_encoder',
-           filename: defaults['zimage_text_encoder'] || 'split_files/text_encoders/qwen_3_4b_fp8_mixed.safetensors',
+           filename: defaults['zimage_text_encoder'] || 'split_files/text_encoders/qwen_3_4b.safetensors',
            target_dir: targetDir },
   };
 

@@ -62,3 +62,13 @@ def test_frontend_exposes_project_picker_and_type_selector():
     assert 'id="project-picker"' in body
     assert 'id="new-project-button"' in body
     assert 'id="project-type"' in body
+
+
+def test_frontend_uses_compatible_zimage_text_encoder_default():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "/models/zimage/split_files/text_encoders/qwen_3_4b.safetensors" in body
+    assert "qwen_3_4b_fp8_mixed.safetensors" not in body

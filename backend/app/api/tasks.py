@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import uuid
 
@@ -47,11 +48,24 @@ def read_log_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _launch(project_id: str, task_type: str, command: list[str], gpu_index: str = ''):
+def _build_task_env(musubi_tuner_path: str, gpu_index: str = '') -> dict[str, str] | None:
+    extra_env: dict[str, str] = {}
+    musubi_src = (Path(musubi_tuner_path) / 'src').as_posix()
+    pythonpath_parts = [part for part in os.environ.get('PYTHONPATH', '').split(os.pathsep) if part]
+    if musubi_src not in pythonpath_parts:
+        pythonpath_parts.insert(0, musubi_src)
+    if pythonpath_parts:
+        extra_env['PYTHONPATH'] = os.pathsep.join(pythonpath_parts)
+    if gpu_index:
+        extra_env['CUDA_VISIBLE_DEVICES'] = gpu_index
+    return extra_env or None
+
+
+def _launch(project_id: str, task_type: str, command: list[str], musubi_tuner_path: str, gpu_index: str = ''):
     task_id = uuid.uuid4().hex[:12]
     metadata_dir = get_tasks_root() / task_id
     log_path = get_logs_root() / f'{task_id}.log'
-    extra_env = {'CUDA_VISIBLE_DEVICES': gpu_index} if gpu_index else None
+    extra_env = _build_task_env(musubi_tuner_path, gpu_index=gpu_index)
     return launch_task(command, log_path, metadata_dir, project_id=project_id, task_type=task_type, extra_env=extra_env)
 
 
@@ -87,7 +101,7 @@ def wan_prepare_latents(project_id: str, payload: WanLatentCacheRequest):
         vae_cache_cpu=payload.vae_cache_cpu,
         clip_path=payload.clip_path,
     )
-    return _launch(project_id, 'wan_cache_latents', command, gpu_index=payload.gpu_index)
+    return _launch(project_id, 'wan_cache_latents', command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +126,7 @@ def wan_prepare_text_encoder(project_id: str, payload: WanTextCacheRequest):
         batch_size=payload.batch_size,
         fp8_t5=payload.fp8_t5,
     )
-    return _launch(project_id, 'wan_cache_text_encoder', command, gpu_index=payload.gpu_index)
+    return _launch(project_id, 'wan_cache_text_encoder', command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +203,7 @@ def wan_train(project_id: str, payload: WanTrainRequest):
         sdpa=payload.sdpa,
         persistent_data_loader_workers=payload.persistent_data_loader_workers,
     )
-    return _launch(project_id, 'wan_train_lora', command, gpu_index=payload.gpu_index)
+    return _launch(project_id, 'wan_train_lora', command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +286,7 @@ def zimage_prepare_latents(project_id: str, payload: ZImageCacheRequest):
         dataset_config=str(dataset_config),
         vae_path=payload.vae_path,
     )
-    return _launch(project_id, 'zimage_cache_latents', command, gpu_index=payload.gpu_index)
+    return _launch(project_id, 'zimage_cache_latents', command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)
 
 
 @router.post("/api/projects/{project_id}/zimage/prepare/text-encoder", status_code=201)
@@ -286,7 +300,7 @@ def zimage_prepare_text_encoder(project_id: str, payload: ZImageCacheRequest):
         vae_path=payload.vae_path,
         text_encoder_path=payload.text_encoder_path,
     )
-    return _launch(project_id, 'zimage_cache_text_encoder', command, gpu_index=payload.gpu_index)
+    return _launch(project_id, 'zimage_cache_text_encoder', command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)
 
 
 @router.post("/api/projects/{project_id}/zimage/train", status_code=201)
@@ -325,4 +339,4 @@ def zimage_train(project_id: str, payload: ZImageTrainRequest):
         seed=payload.seed,
     )
     task_type = 'zimage_train_full' if payload.mode == 'full_finetune' else 'zimage_train_lora'
-    return _launch(project_id, task_type, command, gpu_index=payload.gpu_index)
+    return _launch(project_id, task_type, command, musubi_tuner_path=project.musubi_tuner_path, gpu_index=payload.gpu_index)

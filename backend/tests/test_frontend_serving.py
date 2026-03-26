@@ -41,3 +41,13 @@ def test_frontend_uses_detected_gpu_selector_markup():
     assert 'id="zi-gpu-custom"' in body
     assert 'id="gpu-index"' not in body
     assert 'id="zi-gpu-index"' not in body
+
+
+def test_frontend_uses_distinct_stop_buttons_for_wan_and_zimage():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert body.count('id="stop-task"') == 1
+    assert 'id="zi-stop-task"' in body

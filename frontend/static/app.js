@@ -1,6 +1,7 @@
 /* ── Wan 2.2 Training Console — app.js ──────────────────────────────── */
 
 import { formatGpuChoiceLabel, getGpuPressureState, orderGpuDevices } from './gpu-utils.js';
+import { getTaskId, normalizeTaskStatus } from './task-utils.js';
 
 'use strict';
 
@@ -201,6 +202,27 @@ function getSelectedGpuValue(prefix) {
     return selection.single || '';
   }
   return selection.custom.join(',');
+}
+
+function handleTerminalTaskState(status, kind) {
+  const isZi = kind === 'zi';
+  const badgeFn = isZi ? ziSetLogBadge : setLogBadge;
+  const statusId = isZi ? 'zi-run-status' : 'run-status';
+
+  if (status === 'done') {
+    badgeFn('done');
+    setStatus(statusId, '✓ Task completed.', 'ok');
+  } else if (status === 'stopped') {
+    badgeFn('');
+    setStatus(statusId, 'Task stopped.', 'info');
+  } else {
+    badgeFn('error');
+    setStatus(statusId, 'Task failed. Check logs.', 'error');
+  }
+
+  stopPolling();
+  state.activeTaskId = null;
+  updateSummary();
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -408,7 +430,7 @@ async function cacheLatents() {
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/latents`, payload);
-    startPolling(task.task_id, 'Caching latents…');
+    startPolling(getTaskId(task), 'Caching latents…');
     markStep(1, 'done');
   } catch (e) {
     setStatus('run-status', `Error: ${e.message}`, 'error');
@@ -428,7 +450,7 @@ async function cacheTextEncoder() {
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/text-encoder`, payload);
-    startPolling(task.task_id, 'Caching text encoder…');
+    startPolling(getTaskId(task), 'Caching text encoder…');
     markStep(2, 'done');
   } catch (e) {
     setStatus('run-status', `Error: ${e.message}`, 'error');
@@ -479,7 +501,7 @@ async function startTraining() {
 
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/wan/train`, payload);
-    startPolling(task.task_id, 'Training…');
+    startPolling(getTaskId(task), 'Training…');
   } catch (e) {
     setStatus('run-status', `Error: ${e.message}`, 'error');
     markStep(3, '');
@@ -515,25 +537,16 @@ function stopPolling() {
 async function pollTask(taskId) {
   try {
     const task = await api('GET', `/api/tasks/${taskId}`);
+    const status = normalizeTaskStatus(task.status);
     // Fetch logs
     const logs = await api('GET', `/api/tasks/${taskId}/logs`);
     $('log-output').textContent = logs.content || '(no output yet)';
     $('log-output').scrollTop = $('log-output').scrollHeight;
 
-    if (task.status === 'running') {
+    if (status === 'running') {
       setLogBadge('running');
-    } else if (task.status === 'done') {
-      setLogBadge('done');
-      setStatus('run-status', '✓ Task completed.', 'ok');
-      stopPolling();
-      state.activeTaskId = null;
-      updateSummary();
-    } else if (task.status === 'error' || task.status === 'failed') {
-      setLogBadge('error');
-      setStatus('run-status', 'Task failed. Check logs.', 'error');
-      stopPolling();
-      state.activeTaskId = null;
-      updateSummary();
+    } else if (status === 'done' || status === 'error' || status === 'stopped') {
+      handleTerminalTaskState(status, 'wan');
     }
   } catch {}
 }
@@ -693,24 +706,15 @@ function ziSetLogBadge(status) {
 async function ziPollTask(taskId) {
   try {
     const task = await api('GET', `/api/tasks/${taskId}`);
+    const status = normalizeTaskStatus(task.status);
     const logs = await api('GET', `/api/tasks/${taskId}/logs`);
     $('zi-log-output').textContent = logs.content || '(no output yet)';
     $('zi-log-output').scrollTop = $('zi-log-output').scrollHeight;
 
-    if (task.status === 'running') {
+    if (status === 'running') {
       ziSetLogBadge('running');
-    } else if (task.status === 'done') {
-      ziSetLogBadge('done');
-      setStatus('zi-run-status', '✓ Task completed.', 'ok');
-      stopPolling();
-      state.activeTaskId = null;
-      updateSummary();
-    } else if (task.status === 'error' || task.status === 'failed') {
-      ziSetLogBadge('error');
-      setStatus('zi-run-status', 'Task failed. Check logs.', 'error');
-      stopPolling();
-      state.activeTaskId = null;
-      updateSummary();
+    } else if (status === 'done' || status === 'error' || status === 'stopped') {
+      handleTerminalTaskState(status, 'zi');
     }
   } catch {}
 }
@@ -735,7 +739,7 @@ async function ziCacheLatents() {
       vae_path: val('zi-vae-path'),
       gpu_index: getSelectedGpuValue('zi'),
     });
-    ziStartPolling(task.task_id, 'Caching latents…');
+    ziStartPolling(getTaskId(task), 'Caching latents…');
     ziMarkStep(1, 'done');
   } catch (e) {
     setStatus('zi-run-status', `Error: ${e.message}`, 'error');
@@ -753,7 +757,7 @@ async function ziCacheTextEncoder() {
       text_encoder_path: val('zi-text-encoder-path'),
       gpu_index: getSelectedGpuValue('zi'),
     });
-    ziStartPolling(task.task_id, 'Caching text encoder…');
+    ziStartPolling(getTaskId(task), 'Caching text encoder…');
     ziMarkStep(2, 'done');
   } catch (e) {
     setStatus('zi-run-status', `Error: ${e.message}`, 'error');
@@ -794,7 +798,7 @@ async function ziStartTraining() {
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/zimage/train`, payload);
-    ziStartPolling(task.task_id, 'Training…');
+    ziStartPolling(getTaskId(task), 'Training…');
   } catch (e) {
     setStatus('zi-run-status', `Error: ${e.message}`, 'error');
     ziMarkStep(3, '');
@@ -817,6 +821,7 @@ function init() {
   $('cache-text-encoder').addEventListener('click', cacheTextEncoder);
   $('start-training').addEventListener('click', startTraining);
   $('stop-task').addEventListener('click', stopTask);
+  $('zi-stop-task').addEventListener('click', stopTask);
   $('refresh-task').addEventListener('click', manualRefreshTask);
   $('download-all-assets').addEventListener('click', downloadAllAssets);
 
@@ -910,8 +915,9 @@ async function downloadAllAssets() {
   try {
     setStatus('model-status', 'Starting batch model download…', 'info');
     const task = await api('POST', `/api/projects/${state.projectId}/models/download-all`, { assets });
-    startPolling(task.task_id, 'Downloading models…');
-    setStatus('model-status', `Download task launched: ${task.task_id}`, 'info');
+    const taskId = getTaskId(task);
+    startPolling(taskId, 'Downloading models…');
+    setStatus('model-status', `Download task launched: ${taskId}`, 'info');
   } catch (e) {
     setStatus('model-status', `Download error: ${e.message}`, 'error');
   }
@@ -940,8 +946,9 @@ async function ziDownloadAllAssets() {
   try {
     setStatus('zi-model-status', 'Starting batch model download…', 'info');
     const task = await api('POST', `/api/projects/${state.projectId}/models/download-all`, { assets });
-    ziStartPolling(task.task_id, 'Downloading models…');
-    setStatus('zi-model-status', `Download task launched: ${task.task_id}`, 'info');
+    const taskId = getTaskId(task);
+    ziStartPolling(taskId, 'Downloading models…');
+    setStatus('zi-model-status', `Download task launched: ${taskId}`, 'info');
   } catch (e) {
     setStatus('zi-model-status', `Download error: ${e.message}`, 'error');
   }

@@ -80,4 +80,17 @@ def test_frontend_enables_zimage_sdpa_by_default():
 
     assert response.status_code == 200
     body = response.text
-    assert '<input type="checkbox" id="zi-sdpa" checked />' in body
+    assert '<input type="radio" id="zi-sdpa" name="zi-attention-backend" checked />' in body
+    assert '<input type="radio" id="zi-sage-attn" name="zi-attention-backend" />' in body
+
+
+def test_frontend_exposes_zimage_dataset_picker_and_previews():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'id="zi-dataset-picker"' in body
+    assert 'id="zi-selected-dataset-preview"' in body
+    assert 'id="zi-merged-dataset-preview"' in body
+    assert 'id="zi-preview-dataset-select"' in body

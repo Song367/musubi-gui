@@ -272,6 +272,7 @@ class ZImageTrainRequest(BaseModel):
     full_bf16: bool = False
     blocks_to_swap: int = 0
     sdpa: bool = True
+    sage_attn: bool = False
     seed: int = 42
     gpu_index: str = ''
 
@@ -306,9 +307,18 @@ def zimage_prepare_text_encoder(project_id: str, payload: ZImageCacheRequest):
 @router.post("/api/projects/{project_id}/zimage/train", status_code=201)
 def zimage_train(project_id: str, payload: ZImageTrainRequest):
     project, dataset_config = _get_project_and_dataset(project_id)
-    # The current UI only exposes SDPA. Legacy projects may have saved sdpa=false,
-    # but musubi requires one attention backend for Z-Image training to start.
-    sdpa_enabled = True if not payload.sdpa else payload.sdpa
+    # Z-Image training requires one attention backend, and the UI treats these
+    # backends as mutually exclusive. Prefer SageAttention when explicitly
+    # selected; otherwise fall back to SDPA for legacy projects.
+    if payload.sage_attn:
+        sdpa_enabled = False
+        sage_attn_enabled = True
+    elif payload.sdpa:
+        sdpa_enabled = True
+        sage_attn_enabled = False
+    else:
+        sdpa_enabled = True
+        sage_attn_enabled = False
     command = build_zimage_train_command(
         mode=payload.mode,
         python_bin=project.python_bin,
@@ -339,6 +349,7 @@ def zimage_train(project_id: str, payload: ZImageTrainRequest):
         full_bf16=payload.full_bf16,
         blocks_to_swap=payload.blocks_to_swap,
         sdpa=sdpa_enabled,
+        sage_attn=sage_attn_enabled,
         seed=payload.seed,
     )
     task_type = 'zimage_train_full' if payload.mode == 'full_finetune' else 'zimage_train_lora'

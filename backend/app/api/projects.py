@@ -3,12 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pydantic import ValidationError
 
-from app.config import get_projects_root
+from app.config import get_datasets_root, get_projects_root
 from app.models.project import ProjectConfig, ProjectType
 from app.services.dataset_config_writer import render_video_dataset_config, render_dataset_config
+from app.services.dataset_browser import (
+    build_dataset_samples,
+    find_dataset_dir,
+    list_available_datasets,
+    resolve_preview_file,
+)
 from app.services.dataset_merger import build_merged_dataset
 from app.services.project_store import ProjectStore
 
@@ -47,6 +54,14 @@ class ProjectStateRequest(BaseModel):
     python_bin: str | None = None
     wan22: dict = Field(default_factory=dict)
     zimage: dict = Field(default_factory=dict)
+
+
+def _get_zimage_project(project_id: str):
+    store = ProjectStore(get_projects_root())
+    project = store.get_project(project_id)
+    if project.project_type != 'zimage':
+        raise HTTPException(status_code=400, detail='Selected project is not a Z-Image project')
+    return store, project
 
 
 @router.post("", status_code=201)
@@ -90,13 +105,80 @@ def list_projects():
     return projects
 
 
+@router.get("/{project_id}/datasets")
+def list_zimage_datasets(project_id: str):
+    _store, _project = _get_zimage_project(project_id)
+    return {"datasets": list_available_datasets(get_datasets_root())}
+
+
+@router.get("/{project_id}/datasets/merged/samples")
+def get_merged_dataset_samples(project_id: str):
+    _store, project = _get_zimage_project(project_id)
+    merged_dir = Path(project.workspace_root) / 'merged_dataset'
+    image_dirs = project.zimage.dataset.get('image_dirs', [])
+    dataset_names = project.zimage.dataset.get('dataset_names') or [Path(path).name for path in image_dirs]
+    dataset_by_index = {
+        f"{index:02d}": dataset_name
+        for index, dataset_name in enumerate(dataset_names, start=1)
+    }
+
+    if not merged_dir.exists():
+        return {"dataset": {"name": "merged", "path": merged_dir.as_posix()}, "samples": []}
+
+    samples = build_dataset_samples(
+        dataset_dir=merged_dir,
+        project_id=project_id,
+        image_url_prefix='datasets/merged/files',
+    )
+    for sample in samples:
+        parts = sample["image_name"].split("_", 2)
+        if len(parts) == 3:
+            sample["source_dataset"] = dataset_by_index.get(parts[0], "")
+    return {"dataset": {"name": "merged", "path": merged_dir.as_posix()}, "samples": samples}
+
+
+@router.get("/{project_id}/datasets/merged/files/{filename:path}")
+def get_merged_dataset_preview_image(project_id: str, filename: str):
+    _store, project = _get_zimage_project(project_id)
+    merged_dir = (Path(project.workspace_root) / 'merged_dataset').resolve()
+    try:
+        file_path = resolve_preview_file(merged_dir, filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Preview image not found') from exc
+    return FileResponse(file_path)
+
+
+@router.get("/{project_id}/datasets/{dataset_name}/samples")
+def get_dataset_samples(project_id: str, dataset_name: str):
+    _store, _project = _get_zimage_project(project_id)
+    try:
+        dataset_dir = find_dataset_dir(get_datasets_root(), dataset_name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Dataset not found') from exc
+    samples = build_dataset_samples(
+        dataset_dir=dataset_dir,
+        project_id=project_id,
+        image_url_prefix=f'datasets/{dataset_name}/files',
+        source_dataset=dataset_name,
+    )
+    return {"dataset": {"name": dataset_name, "path": dataset_dir.as_posix()}, "samples": samples}
+
+
+@router.get("/{project_id}/datasets/{dataset_name}/files/{filename:path}")
+def get_dataset_preview_image(project_id: str, dataset_name: str, filename: str):
+    _store, _project = _get_zimage_project(project_id)
+    try:
+        dataset_dir = find_dataset_dir(get_datasets_root(), dataset_name)
+        file_path = resolve_preview_file(dataset_dir, filename)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Preview image not found') from exc
+    return FileResponse(file_path)
+
+
 @router.post("/{project_id}/dataset-config")
 def generate_dataset_config(project_id: str, payload: DatasetConfigRequest):
     """Image-only dataset config (legacy)."""
-    store = ProjectStore(get_projects_root())
-    project = store.get_project(project_id)
-    if project.project_type != 'zimage':
-        raise HTTPException(status_code=400, detail='Selected project is not a Z-Image project')
+    store, project = _get_zimage_project(project_id)
     image_dirs = [path for path in payload.image_dirs if str(path).strip()]
     if not image_dirs and payload.image_dir.strip():
         image_dirs = [payload.image_dir.strip()]
@@ -122,6 +204,7 @@ def generate_dataset_config(project_id: str, payload: DatasetConfigRequest):
         'zimage': {
             'dataset': {
                 'image_dirs': image_dirs,
+                'dataset_names': [Path(path).name for path in image_dirs],
                 'resolution': payload.resolution,
                 'batch_size': payload.batch_size,
             },

@@ -248,11 +248,15 @@ def build_zimage_train_command(
     full_bf16: bool = False,
     blocks_to_swap: int = 0,
     sdpa: bool = True,
+    sage_attn: bool = False,
     seed: int = 42,
 ) -> list[str]:
-    # Z-Image training requires one attention backend. The current UI only
-    # exposes SDPA, so keep it enabled even when legacy saved state passes false.
-    sdpa = True if not sdpa else sdpa
+    # Z-Image training requires one attention backend. Prefer SageAttention
+    # when explicitly selected; otherwise fall back to SDPA for compatibility.
+    if sage_attn:
+        sdpa = False
+    elif not sdpa:
+        sdpa = True
     script_name = 'zimage_train.py' if mode == 'full_finetune' else 'zimage_train_network.py'
     command = [
         python_bin,
@@ -286,6 +290,7 @@ def build_zimage_train_command(
     _append_flag(command, gradient_checkpointing, '--gradient_checkpointing')
     _append_flag(command, persistent_data_loader_workers, '--persistent_data_loader_workers')
     _append_flag(command, sdpa, '--sdpa')
+    _append_flag(command, sage_attn, '--sage-attn')
     if blocks_to_swap > 0:
         command.extend(['--blocks_to_swap', str(blocks_to_swap)])
     if mode == 'full_finetune':

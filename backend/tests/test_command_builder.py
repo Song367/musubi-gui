@@ -196,7 +196,19 @@ class TestBuildZImageTrainCommand:
     def test_defaults_to_sdpa_attention_backend(self):
         cmd = build_zimage_train_command(**self.BASE)
         assert '--sdpa' in cmd
+        assert '--sage-attn' not in cmd
 
     def test_keeps_sdpa_when_false_is_passed_from_legacy_state(self):
         cmd = build_zimage_train_command(**self.BASE, sdpa=False)
         assert '--sdpa' in cmd
+        assert '--sage-attn' not in cmd
+
+    def test_uses_sage_attention_exclusively_when_selected(self):
+        cmd = build_zimage_train_command(**self.BASE, sdpa=False, sage_attn=True)
+        assert '--sage-attn' in cmd
+        assert '--sdpa' not in cmd
+
+    def test_prefers_sage_attention_when_both_are_true(self):
+        cmd = build_zimage_train_command(**self.BASE, sdpa=True, sage_attn=True)
+        assert '--sage-attn' in cmd
+        assert '--sdpa' not in cmd

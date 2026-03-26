@@ -20,6 +20,8 @@ const state = {
   projectSections: { wan22: null, zimage: null },
   hydratingProject: false,
   saveTimer: null,
+  availableDatasets: [],
+  selectedDatasetNames: [],
   gpuDevices: [],
   gpuOrder: [],
   gpuSelections: {
@@ -43,6 +45,21 @@ const setStatus = (id, msg, cls = '') => {
   el.textContent = msg;
   el.className = 'status-line' + (cls ? ` ${cls}` : '');
 };
+
+function getZImageAttentionFlags(source = null) {
+  const training = source || {};
+  const sageAttn = source ? Boolean(training.sage_attn) : checked('zi-sage-attn');
+  const sdpa = source
+    ? (sageAttn ? false : training.sdpa !== false)
+    : !sageAttn;
+  return { sdpa, sage_attn: sageAttn };
+}
+
+function applyZImageAttentionFlags(source = null) {
+  const flags = getZImageAttentionFlags(source);
+  setCheckbox('zi-sdpa', flags.sdpa);
+  setCheckbox('zi-sage-attn', flags.sage_attn);
+}
 
 function getGpuSelection(prefix) {
   return state.gpuSelections[prefix];
@@ -257,6 +274,78 @@ function cloneSection(section) {
   return JSON.parse(JSON.stringify(section));
 }
 
+function getSelectedDatasetNames() {
+  const picker = $('zi-dataset-picker');
+  if (!picker) return [...state.selectedDatasetNames];
+  return [...picker.selectedOptions].map(option => option.value);
+}
+
+function setSelectedDatasetNames(names = []) {
+  state.selectedDatasetNames = [...new Set((names || []).filter(Boolean))];
+  const picker = $('zi-dataset-picker');
+  if (picker) {
+    [...picker.options].forEach(option => {
+      option.selected = state.selectedDatasetNames.includes(option.value);
+    });
+  }
+  syncDatasetPreviewSelector();
+}
+
+function getSelectedDatasetDirs() {
+  const selected = getSelectedDatasetNames();
+  return selected
+    .map(name => state.availableDatasets.find(dataset => dataset.name === name)?.path || '')
+    .filter(Boolean);
+}
+
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function renderDatasetSamples(containerId, samples = [], emptyMessage = 'No samples available yet.') {
+  const container = $(containerId);
+  if (!container) return;
+  if (!samples.length) {
+    container.innerHTML = `<div class="dataset-preview-empty">${escapeHtml(emptyMessage)}</div>`;
+    return;
+  }
+
+  container.innerHTML = samples.map(sample => `
+    <article class="dataset-sample-card">
+      <img class="dataset-sample-image" src="${sample.image_url}" alt="${escapeHtml(sample.name)}" loading="lazy" />
+      <div class="dataset-sample-meta">
+        ${sample.source_dataset ? `<div class="dataset-sample-source">${escapeHtml(sample.source_dataset)}</div>` : ''}
+        <div class="dataset-sample-name">${escapeHtml(sample.image_name || sample.name)}</div>
+        <div class="dataset-sample-caption">${escapeHtml(sample.caption || '(no prompt text found)')}</div>
+      </div>
+    </article>
+  `).join('');
+}
+
+function syncDatasetPreviewSelector() {
+  const select = $('zi-preview-dataset-select');
+  if (!select) return;
+  const previous = select.value;
+  const selected = getSelectedDatasetNames();
+  select.innerHTML = '<option value="">Select a dataset</option>';
+  selected.forEach(name => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  });
+  if (selected.includes(previous)) {
+    select.value = previous;
+  } else if (selected.length) {
+    select.value = selected[0];
+  }
+}
+
 function setProjectStatus(message, cls = '') {
   setStatus('project-status', message, cls);
 }
@@ -332,6 +421,7 @@ function initializeProjectDraft(projectType = null) {
   updateProjectActionButton();
   applyArch(nextType);
   hydrateSectionForArch(nextType);
+  loadZImageDatasets();
   setProjectStatus('New project draft. Fill the fields and click Create Project.', 'info');
   updateSummary();
 }
@@ -427,7 +517,8 @@ function serializeZImageSection() {
       output_name: val('output-name'),
     },
     dataset: {
-      image_dirs: getImageDirs(),
+      image_dirs: getSelectedDatasetDirs(),
+      dataset_names: getSelectedDatasetNames(),
       resolution: [parseInt(val('zi-res-width')) || 1024, parseInt(val('zi-res-height')) || 1024],
       batch_size: parseInt(val('zi-batch-size')) || 1,
     },
@@ -448,7 +539,7 @@ function serializeZImageSection() {
       optimizer_args: val('zi-optimizer-args'),
       max_grad_norm: parseFloat(val('zi-max-grad-norm')) || 0,
       gradient_checkpointing: checked('zi-gradient-checkpointing'),
-      sdpa: checked('zi-sdpa'),
+      ...getZImageAttentionFlags(),
       fused_backward_pass: checked('zi-fused-backward'),
       full_bf16: checked('zi-full-bf16'),
       gpu_index: getSelectedGpuValue('zi'),
@@ -513,7 +604,7 @@ function hydrateZImageSection(section) {
   setValue('zi-text-encoder-path', section.model.text_encoder_path);
   setValue('output-dir', section.model.output_dir);
   setValue('output-name', section.model.output_name);
-  setDirList('zi-image-dir-list', section.dataset.image_dirs, addImageDir);
+  setSelectedDatasetNames(section.dataset.dataset_names || (section.dataset.image_dirs || []).map(path => path.split('/').filter(Boolean).at(-1)));
   setValue('zi-res-width', section.dataset.resolution?.[0]);
   setValue('zi-res-height', section.dataset.resolution?.[1]);
   setValue('zi-batch-size', section.dataset.batch_size);
@@ -533,10 +624,12 @@ function hydrateZImageSection(section) {
   setValue('zi-optimizer-args', section.training.optimizer_args);
   setValue('zi-max-grad-norm', section.training.max_grad_norm);
   setCheckbox('zi-gradient-checkpointing', section.training.gradient_checkpointing);
-  setCheckbox('zi-sdpa', section.training.sdpa);
+  applyZImageAttentionFlags(section.training);
   setCheckbox('zi-fused-backward', section.training.fused_backward_pass);
   setCheckbox('zi-full-bf16', section.training.full_bf16);
   hydrateGpuUi('zi', section.ui);
+  loadSelectedDatasetPreview();
+  loadMergedDatasetPreview();
   updateSummary();
 }
 
@@ -628,6 +721,7 @@ function applyLoadedProject(project) {
   applyArch(state.projectType);
   hydrateSectionForArch(state.projectType);
   state.hydratingProject = false;
+  loadZImageDatasets();
   setProjectStatus(`Loaded project "${project.name}" (${project.id})`, 'ok');
   updateSummary();
 }
@@ -676,6 +770,7 @@ function isProjectAutoSaveTarget(target) {
     return false;
   }
   if (target.id === 'project-picker') return false;
+  if (target.id === 'zi-preview-dataset-select') return false;
   if (target.id === 'project-type' && state.projectId) return false;
   return true;
 }
@@ -1096,31 +1191,73 @@ function applyArch(arch) {
   }
 }
 
-// 鈹€鈹€ Z-Image Dataset dirs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-function addImageDir(path = '') {
-  const list = $('zi-image-dir-list');
-  const item = document.createElement('div');
-  item.className = 'dir-item';
-  item.innerHTML = `<input type="text" placeholder="/path/to/images" value="${path}" />
-    <button class="remove-btn" title="Remove">鉁?/button>`;
-  item.querySelector('.remove-btn').addEventListener('click', () => {
-    item.remove();
-    scheduleProjectSave(true);
-  });
-  list.appendChild(item);
+// 鈹€鈹€ Z-Image Datasets & Previews 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+async function loadZImageDatasets() {
+  const picker = $('zi-dataset-picker');
+  if (!picker) return;
+  picker.innerHTML = '<option value="">Loading datasets...</option>';
+  try {
+    if (!state.projectId) {
+      state.availableDatasets = [];
+      picker.innerHTML = '';
+      syncDatasetPreviewSelector();
+      renderDatasetSamples('zi-selected-dataset-preview', [], 'Create or load a Z-Image project to browse datasets.');
+      renderDatasetSamples('zi-merged-dataset-preview', [], 'Generate a merged dataset to preview combined samples.');
+      return;
+    }
+    const res = await api('GET', `/api/projects/${state.projectId}/datasets`);
+    state.availableDatasets = res.datasets || [];
+    picker.innerHTML = '';
+    state.availableDatasets.forEach(dataset => {
+      const option = document.createElement('option');
+      option.value = dataset.name;
+      option.textContent = `${dataset.name} (${dataset.image_count})`;
+      picker.appendChild(option);
+    });
+    setSelectedDatasetNames(state.selectedDatasetNames);
+    await loadSelectedDatasetPreview();
+    await loadMergedDatasetPreview();
+  } catch (e) {
+    state.availableDatasets = [];
+    picker.innerHTML = '';
+    syncDatasetPreviewSelector();
+    renderDatasetSamples('zi-selected-dataset-preview', [], `Unable to load datasets: ${e.message}`);
+    renderDatasetSamples('zi-merged-dataset-preview', [], 'Merged preview is unavailable.');
+  }
 }
 
-function getImageDirs() {
-  return [...$('zi-image-dir-list').querySelectorAll('input')]
-    .map(i => i.value.trim())
-    .filter(Boolean);
+async function loadSelectedDatasetPreview() {
+  const datasetName = $('zi-preview-dataset-select')?.value || getSelectedDatasetNames()[0] || '';
+  if (!datasetName || !state.projectId) {
+    renderDatasetSamples('zi-selected-dataset-preview', [], 'Select a dataset to preview images and prompts.');
+    return;
+  }
+  try {
+    const res = await api('GET', `/api/projects/${state.projectId}/datasets/${encodeURIComponent(datasetName)}/samples`);
+    renderDatasetSamples('zi-selected-dataset-preview', res.samples, 'This dataset has no supported image samples.');
+  } catch (e) {
+    renderDatasetSamples('zi-selected-dataset-preview', [], `Unable to load dataset preview: ${e.message}`);
+  }
+}
+
+async function loadMergedDatasetPreview() {
+  if (!state.projectId) {
+    renderDatasetSamples('zi-merged-dataset-preview', [], 'Generate a merged dataset to preview combined samples.');
+    return;
+  }
+  try {
+    const res = await api('GET', `/api/projects/${state.projectId}/datasets/merged/samples`);
+    renderDatasetSamples('zi-merged-dataset-preview', res.samples, 'Generate config to build the merged preview.');
+  } catch (e) {
+    renderDatasetSamples('zi-merged-dataset-preview', [], `Unable to load merged preview: ${e.message}`);
+  }
 }
 
 // 鈹€鈹€ Z-Image Dataset Config 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 async function ziGenerateDatasetConfig() {
   if (!state.projectId) { setStatus('zi-dataset-status', 'Create a project first.', 'error'); return; }
-  const dirs = getImageDirs();
-  if (!dirs.length) { setStatus('zi-dataset-status', 'Add at least one image directory.', 'error'); return; }
+  const dirs = getSelectedDatasetDirs();
+  if (!dirs.length) { setStatus('zi-dataset-status', 'Select at least one dataset.', 'error'); return; }
   const payload = {
     image_dirs: dirs,
     resolution: [parseInt(val('zi-res-width')), parseInt(val('zi-res-height'))],
@@ -1130,6 +1267,7 @@ async function ziGenerateDatasetConfig() {
     const res = await api('POST', `/api/projects/${state.projectId}/dataset-config`, payload);
     $('zi-dataset-preview').textContent = res.content;
     setStatus('zi-dataset-status', `Config written to ${res.path}`, 'ok');
+    await loadMergedDatasetPreview();
   } catch (e) {
     setStatus('zi-dataset-status', `Error: ${e.message}`, 'error');
   }
@@ -1266,7 +1404,7 @@ async function ziStartTraining() {
     optimizer_args: val('zi-optimizer-args'),
     max_grad_norm: parseFloat(val('zi-max-grad-norm')) || 0.0,
     gradient_checkpointing: checked('zi-gradient-checkpointing'),
-    sdpa: checked('zi-sdpa'),
+    ...getZImageAttentionFlags(),
     fused_backward_pass: checked('zi-fused-backward'),
     full_bf16: checked('zi-full-bf16'),
     gpu_index: getSelectedGpuValue('zi'),
@@ -1306,9 +1444,17 @@ function init() {
   $('zi-check-models').addEventListener('click', ziCheckModels);
   $('zi-download-all-assets').addEventListener('click', ziDownloadAllAssets);
   $('zi-generate-dataset').addEventListener('click', ziGenerateDatasetConfig);
-  $('zi-add-image-dir').addEventListener('click', () => {
-    addImageDir();
+  $('zi-refresh-datasets').addEventListener('click', async () => {
+    await loadZImageDatasets();
+  });
+  $('zi-dataset-picker').addEventListener('change', async () => {
+    setSelectedDatasetNames(getSelectedDatasetNames());
+    renderDatasetSamples('zi-merged-dataset-preview', [], 'Selection changed. Generate config again to refresh merged preview.');
+    await loadSelectedDatasetPreview();
     scheduleProjectSave(true);
+  });
+  $('zi-preview-dataset-select').addEventListener('change', async () => {
+    await loadSelectedDatasetPreview();
   });
   $('zi-cache-latents').addEventListener('click', ziCacheLatents);
   $('zi-cache-text-encoder').addEventListener('click', ziCacheTextEncoder);
@@ -1384,7 +1530,6 @@ function init() {
 
   // Default dirs
   addVideoDir('/datasets/wan22');
-  addImageDir('/datasets/zimage');
 
   // Apply initial mode
   applyModelMode('dual');
@@ -1408,6 +1553,7 @@ function init() {
   };
   initializeProjectDraft('wan22');
   refreshProjects();
+  loadZImageDatasets();
 
   updateSummary();
 }

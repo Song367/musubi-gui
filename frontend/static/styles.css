@@ -326,7 +326,8 @@ body {
   user-select: none;
 }
 .toggle-item:hover { background: var(--bg-hover); border-color: rgba(124,58,237,0.3); }
-.toggle-item input[type="checkbox"] { display: none; }
+.toggle-item input[type="checkbox"],
+.toggle-item input[type="radio"] { display: none; }
 .toggle-item .toggle-check {
   width: 14px; height: 14px;
   border: 1.5px solid var(--text-muted);
@@ -495,6 +496,91 @@ body {
   transition: color var(--transition); padding: 0 2px;
 }
 .dir-item .remove-btn:hover { color: var(--danger); }
+
+.dataset-picker,
+.preview-picker {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.dataset-picker option,
+.preview-picker option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.dataset-preview-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dataset-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.dataset-preview-empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.01);
+}
+
+.dataset-sample-card {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.dataset-sample-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #0a0c10;
+}
+
+.dataset-sample-meta {
+  padding: 10px 12px 12px;
+}
+
+.dataset-sample-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.dataset-sample-caption {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.dataset-sample-source {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--teal);
+  font-size: 11px;
+}
 
 /* ── Console / Log ─────────────────────────────────────────────────────── */
 .console-box {

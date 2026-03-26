@@ -562,10 +562,11 @@
             </div>
             <div>
               <div class="flex-row" style="justify-content:space-between; margin-bottom:8px;">
-                <span class="text-muted">Image Directories</span>
-                <button id="zi-add-image-dir" class="btn btn-ghost btn-sm">+ Add</button>
+                <span class="text-muted">Datasets From /datasets</span>
+                <button id="zi-refresh-datasets" class="btn btn-ghost btn-sm">Refresh</button>
               </div>
-              <div id="zi-image-dir-list" class="dir-list"></div>
+              <select id="zi-dataset-picker" class="dataset-picker" multiple size="6"></select>
+              <p class="text-muted mt-4">Use Ctrl/Cmd-click to select multiple datasets for merge and training.</p>
             </div>
             <div class="fields-row four">
               <div class="field">
@@ -586,6 +587,23 @@
               </div>
             </div>
             <pre id="zi-dataset-preview" class="console-box short">Dataset config preview will appear here.</pre>
+            <div class="dataset-preview-toolbar mt-8">
+              <div>
+                <div class="card-kicker">Single Dataset Preview</div>
+                <div class="card-title" style="font-size:0.95rem;">Images and Prompts</div>
+              </div>
+              <select id="zi-preview-dataset-select" class="preview-picker">
+                <option value="">Select a dataset</option>
+              </select>
+            </div>
+            <div id="zi-selected-dataset-preview" class="dataset-preview-grid"></div>
+            <div class="dataset-preview-toolbar mt-8">
+              <div>
+                <div class="card-kicker">Merged Preview</div>
+                <div class="card-title" style="font-size:0.95rem;">Combined Training Samples</div>
+              </div>
+            </div>
+            <div id="zi-merged-dataset-preview" class="dataset-preview-grid"></div>
             <p id="zi-dataset-status" class="status-line">No dataset config generated yet.</p>
           </div>
         </div>
@@ -708,9 +726,14 @@
               <span class="toggle-label">Gradient Checkpointing</span>
             </label>
             <label class="toggle-item">
-              <input type="checkbox" id="zi-sdpa" checked />
+              <input type="radio" id="zi-sdpa" name="zi-attention-backend" checked />
               <span class="toggle-check"></span>
               <span class="toggle-label">SDPA</span>
+            </label>
+            <label class="toggle-item">
+              <input type="radio" id="zi-sage-attn" name="zi-attention-backend" />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">SageAttention</span>
             </label>
             <label class="toggle-item">
               <input type="checkbox" id="zi-fused-backward" checked />

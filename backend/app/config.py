@@ -21,3 +21,10 @@ def get_tasks_root() -> Path:
 
 def get_logs_root() -> Path:
     return get_data_root() / "logs"
+
+
+def get_datasets_root() -> Path:
+    override = os.environ.get("MUSUBI_UI_DATASETS_ROOT")
+    if override:
+        return Path(override)
+    return Path("/datasets")

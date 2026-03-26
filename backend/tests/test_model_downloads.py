@@ -23,6 +23,7 @@ def test_model_check(tmp_path, monkeypatch):
         "/api/projects",
         json={
             "name": "demo",
+            "project_type": "wan22",
             "musubi_tuner_path": "/srv/musubi-tuner",
             "python_bin": "python",
         },
@@ -52,6 +53,7 @@ def test_model_download(tmp_path, monkeypatch):
         "/api/projects",
         json={
             "name": "demo",
+            "project_type": "wan22",
             "musubi_tuner_path": "/srv/musubi-tuner",
             "python_bin": "python",
         },
@@ -97,6 +99,7 @@ def test_download_all_runs_as_one_task(tmp_path, monkeypatch):
         "/api/projects",
         json={
             "name": "demo",
+            "project_type": "wan22",
             "musubi_tuner_path": "/srv/musubi-tuner",
             "python_bin": "python",
         },

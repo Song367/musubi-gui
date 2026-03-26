@@ -51,3 +51,14 @@ def test_frontend_uses_distinct_stop_buttons_for_wan_and_zimage():
     body = response.text
     assert body.count('id="stop-task"') == 1
     assert 'id="zi-stop-task"' in body
+
+
+def test_frontend_exposes_project_picker_and_type_selector():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'id="project-picker"' in body
+    assert 'id="new-project-button"' in body
+    assert 'id="project-type"' in body

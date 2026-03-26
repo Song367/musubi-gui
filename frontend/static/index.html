@@ -42,8 +42,21 @@
           <div class="card">
             <div class="card-kicker">Active Workspace</div>
             <div class="field">
+              <label for="project-picker">Project</label>
+              <select id="project-picker">
+                <option value="">Select a project</option>
+              </select>
+            </div>
+            <div class="field">
               <label for="project-name">Project Name</label>
               <input id="project-name" value="wan22-lora" />
+            </div>
+            <div class="field">
+              <label for="project-type">Project Type</label>
+              <select id="project-type">
+                <option value="wan22">Wan 2.2</option>
+                <option value="zimage">Z-Image</option>
+              </select>
             </div>
             <div class="field">
               <label for="musubi-path">Musubi Tuner Path</label>
@@ -54,8 +67,7 @@
               <input id="python-bin" value="/usr/local/bin/python" />
             </div>
             <div class="flex-row">
-              <button id="create-project" class="btn btn-primary btn-sm">Create Project</button>
-              <button id="load-projects" class="btn btn-ghost btn-sm">Load</button>
+              <button id="new-project-button" class="btn btn-primary btn-sm">New Project</button>
             </div>
             <p id="project-status" class="status-line">No project selected.</p>
           </div>

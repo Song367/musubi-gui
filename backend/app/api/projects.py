@@ -4,9 +4,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from pydantic import ValidationError
 
 from app.config import get_projects_root
-from app.models.project import ProjectConfig
+from app.models.project import ProjectConfig, ProjectType
 from app.services.dataset_config_writer import render_video_dataset_config, render_dataset_config
 from app.services.dataset_merger import build_merged_dataset
 from app.services.project_store import ProjectStore
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 class CreateProjectRequest(BaseModel):
     name: str
+    project_type: ProjectType
     musubi_tuner_path: str
     python_bin: str
 
@@ -40,10 +42,11 @@ class DatasetVideoConfigRequest(BaseModel):
 
 
 class ProjectStateRequest(BaseModel):
-    model: dict = {}
-    dataset: dict = {}
-    training: dict = {}
-    ui: dict = {}
+    name: str | None = None
+    musubi_tuner_path: str | None = None
+    python_bin: str | None = None
+    wan22: dict = Field(default_factory=dict)
+    zimage: dict = Field(default_factory=dict)
 
 
 @router.post("", status_code=201)
@@ -51,6 +54,7 @@ def create_project(payload: CreateProjectRequest):
     store = ProjectStore(get_projects_root())
     return store.create_project(
         name=payload.name,
+        project_type=payload.project_type,
         musubi_tuner_path=payload.musubi_tuner_path,
         python_bin=payload.python_bin,
     )
@@ -79,7 +83,10 @@ def list_projects():
     root = get_projects_root()
     projects = []
     for item in root.glob('*/project.json'):
-        projects.append(ProjectConfig.model_validate_json(item.read_text(encoding='utf-8')))
+        try:
+            projects.append(ProjectConfig.model_validate_json(item.read_text(encoding='utf-8')))
+        except (OSError, ValidationError, ValueError):
+            continue
     return projects
 
 
@@ -88,6 +95,8 @@ def generate_dataset_config(project_id: str, payload: DatasetConfigRequest):
     """Image-only dataset config (legacy)."""
     store = ProjectStore(get_projects_root())
     project = store.get_project(project_id)
+    if project.project_type != 'zimage':
+        raise HTTPException(status_code=400, detail='Selected project is not a Z-Image project')
     image_dirs = [path for path in payload.image_dirs if str(path).strip()]
     if not image_dirs and payload.image_dir.strip():
         image_dirs = [payload.image_dir.strip()]
@@ -110,10 +119,12 @@ def generate_dataset_config(project_id: str, payload: DatasetConfigRequest):
     path = Path(project.workspace_root) / 'dataset_config.toml'
     path.write_text(text, encoding='utf-8')
     store.update_project_state(project_id, {
-        'dataset': {
-            'image_dirs': image_dirs,
-            'resolution': payload.resolution,
-            'batch_size': payload.batch_size,
+        'zimage': {
+            'dataset': {
+                'image_dirs': image_dirs,
+                'resolution': payload.resolution,
+                'batch_size': payload.batch_size,
+            },
         }
     })
     return {"path": str(path), "merged_dir": str(merged_dir), "image_count": image_count, "content": text}
@@ -124,6 +135,8 @@ def generate_video_dataset_config(project_id: str, payload: DatasetVideoConfigRe
     """Video dataset config for Wan 2.2 training."""
     store = ProjectStore(get_projects_root())
     project = store.get_project(project_id)
+    if project.project_type != 'wan22':
+        raise HTTPException(status_code=400, detail='Selected project is not a Wan 2.2 project')
 
     video_dirs = [d for d in payload.video_dirs if d.strip()]
     if not video_dirs:
@@ -144,13 +157,15 @@ def generate_video_dataset_config(project_id: str, payload: DatasetVideoConfigRe
     path = Path(project.workspace_root) / 'dataset_config.toml'
     path.write_text(text, encoding='utf-8')
     store.update_project_state(project_id, {
-        'dataset': {
-            'video_dirs': video_dirs,
-            'resolution': payload.resolution,
-            'batch_size': payload.batch_size,
-            'target_frames': payload.target_frames,
-            'frame_extraction': payload.frame_extraction,
-            'fps': payload.fps,
+        'wan22': {
+            'dataset': {
+                'video_dirs': video_dirs,
+                'resolution': payload.resolution,
+                'batch_size': payload.batch_size,
+                'target_frames': payload.target_frames,
+                'frame_extraction': payload.frame_extraction,
+                'fps': payload.fps,
+            },
         }
     })
     return {"path": str(path), "video_dir": video_dir, "content": text}

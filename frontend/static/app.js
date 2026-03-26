@@ -1,5 +1,7 @@
 /* ── Wan 2.2 Training Console — app.js ──────────────────────────────── */
 
+import { formatGpuChoiceLabel, getGpuPressureState, orderGpuDevices } from './gpu-utils.js';
+
 'use strict';
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -9,6 +11,12 @@ const state = {
   pollInterval: null,
   taskType: 'i2v',        // 'i2v' | 't2v'
   modelMode: 'dual',      // 'dual' | 'low' | 'high'
+  gpuDevices: [],
+  gpuOrder: [],
+  gpuSelections: {
+    wan: { mode: 'all', single: '', custom: [] },
+    zi: { mode: 'all', single: '', custom: [] },
+  },
 };
 
 // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -21,6 +29,179 @@ const setStatus = (id, msg, cls = '') => {
   el.textContent = msg;
   el.className = 'status-line' + (cls ? ` ${cls}` : '');
 };
+
+function getGpuSelection(prefix) {
+  return state.gpuSelections[prefix];
+}
+
+function getAvailableGpuIds() {
+  return state.gpuDevices.map(gpu => String(gpu.index));
+}
+
+function setGpuSelectorMessage(prefix, message) {
+  const el = $(`${prefix}-gpu-status`);
+  if (!el) return;
+  el.textContent = message;
+}
+
+function describeGpuChoice(gpu) {
+  const pressure = getGpuPressureState(gpu);
+  return `${pressure.label} | ${formatGpuChoiceLabel(gpu)}`;
+}
+
+function applyGpuToneClass(el, tone) {
+  if (!el) return;
+  el.classList.remove('gpu-tone-ok', 'gpu-tone-warn', 'gpu-tone-hot');
+  if (tone) {
+    el.classList.add(`gpu-tone-${tone}`);
+  }
+}
+
+function sanitizeGpuSelection(prefix) {
+  const selection = getGpuSelection(prefix);
+  const availableIds = getAvailableGpuIds();
+  const availableSet = new Set(availableIds);
+
+  if (!availableIds.length) {
+    selection.mode = 'all';
+    selection.single = '';
+    selection.custom = [];
+    return;
+  }
+
+  if (!['all', 'single', 'custom'].includes(selection.mode)) {
+    selection.mode = 'all';
+  }
+  if (!availableSet.has(selection.single)) {
+    selection.single = availableIds[0];
+  }
+  selection.custom = selection.custom.filter(id => availableSet.has(id));
+  if (!selection.custom.length) {
+    selection.custom = [availableIds[0]];
+  }
+}
+
+function renderGpuSelector(prefix, errorMessage = '') {
+  const modeEl = $(`${prefix}-gpu-mode`);
+  const selectEl = $(`${prefix}-gpu-select`);
+  const customEl = $(`${prefix}-gpu-custom`);
+  const customListEl = $(`${prefix}-gpu-custom-list`);
+  if (!modeEl || !selectEl || !customEl || !customListEl) return;
+
+  const selection = getGpuSelection(prefix);
+  const availableIds = getAvailableGpuIds();
+  const hasDevices = availableIds.length > 0;
+
+  if (modeEl.options[1]) modeEl.options[1].disabled = !hasDevices;
+  if (modeEl.options[2]) modeEl.options[2].disabled = !hasDevices;
+  if (!hasDevices) {
+    selection.mode = 'all';
+  }
+  modeEl.value = selection.mode;
+
+  if (hasDevices) {
+    selectEl.innerHTML = state.gpuDevices.map(gpu => (
+      `<option value="${gpu.index}">${describeGpuChoice(gpu)}</option>`
+    )).join('');
+    selectEl.value = selection.single || availableIds[0];
+
+    customListEl.innerHTML = state.gpuDevices.map(gpu => {
+      const gpuId = String(gpu.index);
+      const isChecked = selection.custom.includes(gpuId) ? ' checked' : '';
+      const pressure = getGpuPressureState(gpu);
+      return `
+        <label class="toggle-item gpu-tone-${pressure.tone}">
+          <input type="checkbox" value="${gpuId}"${isChecked} />
+          <span class="toggle-check"></span>
+          <span class="toggle-label">${describeGpuChoice(gpu)}</span>
+        </label>`;
+    }).join('');
+
+    customListEl.querySelectorAll('input[type="checkbox"]').forEach(input => {
+      input.addEventListener('change', () => {
+        const selectedIds = [...customListEl.querySelectorAll('input[type="checkbox"]:checked')]
+          .map(box => box.value);
+        selection.custom = selectedIds.length ? selectedIds : [input.value];
+        renderGpuSelector(prefix, errorMessage);
+      });
+    });
+  } else {
+    selectEl.innerHTML = '<option value="">No GPUs detected</option>';
+    selectEl.value = '';
+    customListEl.innerHTML = '';
+  }
+
+  const isSingleMode = selection.mode === 'single' && hasDevices;
+  const isCustomMode = selection.mode === 'custom' && hasDevices;
+  selectEl.classList.toggle('hidden', !isSingleMode);
+  selectEl.disabled = !isSingleMode;
+  customEl.classList.toggle('hidden', !isCustomMode);
+  applyGpuToneClass(selectEl, null);
+
+  if (!hasDevices) {
+    setGpuSelectorMessage(prefix, errorMessage || 'GPU detection unavailable. Falling back to all visible GPUs.');
+    return;
+  }
+  if (selection.mode === 'all') {
+    setGpuSelectorMessage(prefix, `Using all ${availableIds.length} detected GPU${availableIds.length === 1 ? '' : 's'}.`);
+    return;
+  }
+  if (selection.mode === 'single') {
+    const gpu = state.gpuDevices.find(item => String(item.index) === selection.single);
+    if (gpu) {
+      const pressure = getGpuPressureState(gpu);
+      applyGpuToneClass(selectEl, pressure.tone);
+      setGpuSelectorMessage(prefix, `Using GPU ${gpu.index} (${gpu.name}) - ${pressure.label.toLowerCase()} load.`);
+    } else {
+      setGpuSelectorMessage(prefix, 'Using a single detected GPU.');
+    }
+    return;
+  }
+  setGpuSelectorMessage(prefix, `Using custom GPU set: ${selection.custom.join(', ')}.`);
+}
+
+function setupGpuSelector(prefix) {
+  const modeEl = $(`${prefix}-gpu-mode`);
+  const selectEl = $(`${prefix}-gpu-select`);
+  if (!modeEl || !selectEl) return;
+
+  modeEl.addEventListener('change', () => {
+    const selection = getGpuSelection(prefix);
+    selection.mode = modeEl.value;
+    sanitizeGpuSelection(prefix);
+    renderGpuSelector(prefix);
+  });
+
+  selectEl.addEventListener('change', () => {
+    const selection = getGpuSelection(prefix);
+    selection.single = selectEl.value;
+    renderGpuSelector(prefix);
+  });
+
+  sanitizeGpuSelection(prefix);
+  renderGpuSelector(prefix);
+}
+
+function syncGpuSelectors(gpus, errorMessage = '') {
+  const normalized = Array.isArray(gpus) ? gpus.map(gpu => ({ ...gpu, index: String(gpu.index) })) : [];
+  state.gpuDevices = orderGpuDevices(normalized, state.gpuOrder);
+  state.gpuOrder = state.gpuDevices.map(gpu => String(gpu.index));
+  ['wan', 'zi'].forEach(prefix => {
+    sanitizeGpuSelection(prefix);
+    renderGpuSelector(prefix, errorMessage);
+  });
+}
+
+function getSelectedGpuValue(prefix) {
+  const selection = getGpuSelection(prefix);
+  if (!selection || !state.gpuDevices.length || selection.mode === 'all') {
+    return '';
+  }
+  if (selection.mode === 'single') {
+    return selection.single || '';
+  }
+  return selection.custom.join(',');
+}
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function api(method, path, body = null) {
@@ -223,7 +404,7 @@ async function cacheLatents() {
     i2v: checked('i2v-mode'),
     vae_cache_cpu: checked('vae-cache-cpu'),
     clip_path: 'wan2.1_is_handled_by_backend',
-    gpu_index: val('gpu-index'),
+    gpu_index: getSelectedGpuValue('wan'),
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/latents`, payload);
@@ -243,7 +424,7 @@ async function cacheTextEncoder() {
     t5_path: val('t5-path'),
     batch_size: parseInt(val('te-batch-size')) || 16,
     fp8_t5: checked('fp8-t5'),
-    gpu_index: val('gpu-index'),
+    gpu_index: getSelectedGpuValue('wan'),
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/wan/prepare/text-encoder`, payload);
@@ -293,7 +474,7 @@ async function startTraining() {
     offload_inactive_dit: checked('offload-inactive-dit'),
     sdpa: checked('sdpa'),
     persistent_data_loader_workers: checked('persistent-workers'),
-    gpu_index: val('gpu-index'),
+    gpu_index: getSelectedGpuValue('wan'),
   };
 
   try {
@@ -552,6 +733,7 @@ async function ziCacheLatents() {
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/zimage/prepare/latents`, {
       vae_path: val('zi-vae-path'),
+      gpu_index: getSelectedGpuValue('zi'),
     });
     ziStartPolling(task.task_id, 'Caching latents…');
     ziMarkStep(1, 'done');
@@ -569,6 +751,7 @@ async function ziCacheTextEncoder() {
     const task = await api('POST', `/api/projects/${state.projectId}/zimage/prepare/text-encoder`, {
       vae_path: val('zi-vae-path'),
       text_encoder_path: val('zi-text-encoder-path'),
+      gpu_index: getSelectedGpuValue('zi'),
     });
     ziStartPolling(task.task_id, 'Caching text encoder…');
     ziMarkStep(2, 'done');
@@ -607,7 +790,7 @@ async function ziStartTraining() {
     sdpa: checked('zi-sdpa'),
     fused_backward_pass: checked('zi-fused-backward'),
     full_bf16: checked('zi-full-bf16'),
-    gpu_index: val('zi-gpu-index'),
+    gpu_index: getSelectedGpuValue('zi'),
   };
   try {
     const task = await api('POST', `/api/projects/${state.projectId}/zimage/train`, payload);
@@ -621,6 +804,8 @@ async function ziStartTraining() {
 // ── Init ───────────────────────────────────────────────────────────────────
 function init() {
   state.arch = 'wan22';
+  setupGpuSelector('wan');
+  setupGpuSelector('zi');
 
   // Wan 2.2 buttons
   $('create-project').addEventListener('click', createProject);
@@ -768,6 +953,7 @@ async function pollGPUStatus() {
     const res = await api('GET', '/api/gpu/status');
     const textEl = $('gpu-text');
     const dash = $('tasks-gpu-dashboard');
+    syncGpuSelectors(res.gpus, res.error || '');
     
     if (res.error && res.gpus.length === 0) {
       if (textEl) textEl.textContent = 'Error or No GPU';
@@ -812,6 +998,7 @@ async function pollGPUStatus() {
       }).join('');
     }
   } catch (e) {
+    syncGpuSelectors([], 'GPU status is offline. Falling back to all visible GPUs.');
     const textEl = $('gpu-text');
     if (textEl) textEl.textContent = 'Offline';
     const dash = $('tasks-gpu-dashboard');

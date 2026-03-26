@@ -259,6 +259,57 @@ body {
 .fields-row.three { grid-template-columns: 1fr 1fr 1fr; }
 .fields-row.four  { grid-template-columns: 1fr 1fr 1fr 1fr; }
 
+.gpu-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gpu-selector-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.gpu-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gpu-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.gpu-selector-note {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.gpu-tone-ok {
+  border-color: rgba(16,185,129,0.35) !important;
+  background: rgba(16,185,129,0.08) !important;
+}
+
+.gpu-tone-warn {
+  border-color: rgba(245,158,11,0.35) !important;
+  background: rgba(245,158,11,0.08) !important;
+}
+
+.gpu-tone-hot {
+  border-color: rgba(239,68,68,0.4) !important;
+  background: rgba(239,68,68,0.1) !important;
+}
+
 /* ── Toggle / Checkbox ─────────────────────────────────────────────────── */
 .toggle-row {
   display: flex; flex-wrap: wrap; gap: 8px;

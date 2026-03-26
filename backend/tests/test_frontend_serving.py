@@ -25,3 +25,19 @@ def test_frontend_supports_multiple_video_directories():
     body = response.text
     assert "add-video-dir" in body
     assert "video-dir-list" in body
+
+
+def test_frontend_uses_detected_gpu_selector_markup():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'id="wan-gpu-mode"' in body
+    assert 'id="wan-gpu-select"' in body
+    assert 'id="wan-gpu-custom"' in body
+    assert 'id="zi-gpu-mode"' in body
+    assert 'id="zi-gpu-select"' in body
+    assert 'id="zi-gpu-custom"' in body
+    assert 'id="gpu-index"' not in body
+    assert 'id="zi-gpu-index"' not in body

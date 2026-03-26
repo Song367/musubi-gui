@@ -245,8 +245,21 @@
 
           <div class="fields-row four">
             <div class="field">
-              <label for="gpu-index">GPU IDs <span class="text-muted">(e.g. 0,1)</span></label>
-              <input id="gpu-index" type="text" placeholder="All GPUs" value="" />
+              <label for="wan-gpu-mode">GPU Selection</label>
+              <div class="gpu-selector" id="wan-gpu-selector">
+                <div class="gpu-selector-grid">
+                  <select id="wan-gpu-mode">
+                    <option value="all">All GPUs</option>
+                    <option value="single">Single GPU</option>
+                    <option value="custom">Custom Multi-GPU</option>
+                  </select>
+                  <select id="wan-gpu-select" class="hidden" aria-label="Wan GPU device"></select>
+                </div>
+                <div id="wan-gpu-custom" class="gpu-custom hidden">
+                  <div id="wan-gpu-custom-list" class="gpu-chip-list"></div>
+                </div>
+                <p id="wan-gpu-status" class="text-muted">Detecting GPUs...</p>
+              </div>
             </div>
             <div class="field"></div><div class="field"></div><div class="field"></div>
           </div>
@@ -443,8 +456,8 @@
                     <input id="te-batch-size" type="number" value="16" />
                   </div>
                   <div class="field">
-                    <label for="gpu-index">GPU Device Index</label>
-                    <input id="gpu-index" value="" placeholder="Leave blank = all" />
+                    <label>GPU Target</label>
+                    <p class="gpu-selector-note">Uses the GPU selection above for cache and training tasks.</p>
                   </div>
                 </div>
               </div>
@@ -575,8 +588,21 @@
           </div>
           <div class="fields-row four">
             <div class="field">
-              <label for="zi-gpu-index">GPU IDs <span class="text-muted">(e.g. 0,1)</span></label>
-              <input id="zi-gpu-index" type="text" placeholder="All GPUs" value="" />
+              <label for="zi-gpu-mode">GPU Selection</label>
+              <div class="gpu-selector" id="zi-gpu-selector">
+                <div class="gpu-selector-grid">
+                  <select id="zi-gpu-mode">
+                    <option value="all">All GPUs</option>
+                    <option value="single">Single GPU</option>
+                    <option value="custom">Custom Multi-GPU</option>
+                  </select>
+                  <select id="zi-gpu-select" class="hidden" aria-label="Z-Image GPU device"></select>
+                </div>
+                <div id="zi-gpu-custom" class="gpu-custom hidden">
+                  <div id="zi-gpu-custom-list" class="gpu-chip-list"></div>
+                </div>
+                <p id="zi-gpu-status" class="text-muted">Detecting GPUs...</p>
+              </div>
             </div>
             <div class="field"></div><div class="field"></div><div class="field"></div>
           </div>
@@ -781,6 +807,6 @@
 
       </main>
     </div>
-    <script src="/static/app.js"></script>
+    <script type="module" src="/static/app.js"></script>
   </body>
 </html>

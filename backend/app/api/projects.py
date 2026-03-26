@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pydantic import ValidationError
@@ -12,6 +12,7 @@ from app.models.project import ProjectConfig, ProjectType
 from app.services.dataset_config_writer import render_video_dataset_config, render_dataset_config
 from app.services.dataset_browser import (
     build_dataset_samples,
+    count_supported_images,
     find_dataset_dir,
     list_available_datasets,
     resolve_preview_file,
@@ -109,6 +110,28 @@ def list_projects():
 def list_zimage_datasets(project_id: str):
     _store, _project = _get_zimage_project(project_id)
     return {"datasets": list_available_datasets(get_datasets_root())}
+
+
+@router.get("/{project_id}/datasets/summary")
+def get_zimage_dataset_summary(project_id: str, selected: list[str] = Query(default_factory=list)):
+    _store, project = _get_zimage_project(project_id)
+    datasets_root = get_datasets_root()
+
+    normalized_selected = [name for name in selected if str(name).strip()]
+    selected_image_count = 0
+    for dataset_name in normalized_selected:
+        try:
+            dataset_dir = find_dataset_dir(datasets_root, dataset_name)
+        except FileNotFoundError:
+            continue
+        selected_image_count += count_supported_images(dataset_dir)
+
+    merged_dir = Path(project.workspace_root) / 'merged_dataset'
+    return {
+        "selected_dataset_count": len(normalized_selected),
+        "selected_image_count": selected_image_count,
+        "merged_image_count": count_supported_images(merged_dir),
+    }
 
 
 @router.get("/{project_id}/datasets/merged/samples")

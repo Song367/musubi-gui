@@ -514,6 +514,36 @@ body {
   color: var(--text-primary);
 }
 
+.dataset-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dataset-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.dataset-summary-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dataset-summary-value {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .dataset-preview-toolbar {
   display: flex;
   justify-content: space-between;

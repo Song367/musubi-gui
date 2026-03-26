@@ -565,6 +565,20 @@
                 <span class="text-muted">Datasets From /datasets</span>
                 <button id="zi-refresh-datasets" class="btn btn-ghost btn-sm">Refresh</button>
               </div>
+              <div class="dataset-summary-bar">
+                <div class="dataset-summary-item">
+                  <span class="dataset-summary-label">Selected Datasets</span>
+                  <span id="zi-selected-dataset-count" class="dataset-summary-value">0</span>
+                </div>
+                <div class="dataset-summary-item">
+                  <span class="dataset-summary-label">Selected Images</span>
+                  <span id="zi-selected-image-count" class="dataset-summary-value">0</span>
+                </div>
+                <div class="dataset-summary-item">
+                  <span class="dataset-summary-label">Merged Images</span>
+                  <span id="zi-merged-image-count" class="dataset-summary-value">0</span>
+                </div>
+              </div>
               <select id="zi-dataset-picker" class="dataset-picker" multiple size="6"></select>
               <p class="text-muted mt-4">Use Ctrl/Cmd-click to select multiple datasets for merge and training.</p>
             </div>

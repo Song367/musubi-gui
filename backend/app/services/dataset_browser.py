@@ -28,6 +28,12 @@ def list_available_datasets(datasets_root: Path) -> list[dict[str, object]]:
     return datasets
 
 
+def count_supported_images(dataset_dir: Path) -> int:
+    if not dataset_dir.exists() or not dataset_dir.is_dir():
+        return 0
+    return sum(1 for candidate in dataset_dir.iterdir() if _is_supported_image(candidate))
+
+
 def find_dataset_dir(datasets_root: Path, dataset_name: str) -> Path:
     candidate = (datasets_root / dataset_name).resolve()
     root = datasets_root.resolve()
@@ -69,9 +75,10 @@ def build_dataset_samples(
 
 
 def resolve_preview_file(root_dir: Path, filename: str) -> Path:
-    file_path = (root_dir / filename).resolve()
-    if root_dir.resolve() not in file_path.parents:
+    requested_path = Path(filename)
+    if requested_path.is_absolute() or '..' in requested_path.parts:
         raise FileNotFoundError(filename)
+    file_path = root_dir / requested_path
     if not file_path.exists() or not file_path.is_file():
         raise FileNotFoundError(filename)
     return file_path

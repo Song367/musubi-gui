@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.dataset_browser import resolve_preview_file
 
 
 def _write_dataset_sample(root: Path, stem: str, image_extension: str, caption: str) -> None:
@@ -89,6 +90,52 @@ def test_returns_merged_dataset_preview_after_config_generation(tmp_path, monkey
     assert merged["samples"][0]["caption"] in {"alpha prompt", "beta prompt"}
 
 
+def test_returns_dataset_summary_for_selected_and_merged_samples(tmp_path, monkeypatch):
+    monkeypatch.setenv("MUSUBI_UI_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("MUSUBI_UI_DATASETS_ROOT", str(tmp_path / "datasets"))
+    client = TestClient(app)
+
+    alpha_dir = tmp_path / "datasets" / "alpha"
+    beta_dir = tmp_path / "datasets" / "beta"
+    gamma_dir = tmp_path / "datasets" / "gamma"
+    _write_dataset_sample(alpha_dir, "hero", ".png", "alpha prompt")
+    _write_dataset_sample(alpha_dir, "hero_alt", ".jpg", "alpha alt prompt")
+    _write_dataset_sample(beta_dir, "scene", ".jpg", "beta prompt")
+    _write_dataset_sample(gamma_dir, "unused", ".png", "gamma prompt")
+
+    project = client.post(
+        "/api/projects",
+        json={
+            "name": "zimage-summary",
+            "project_type": "zimage",
+            "musubi_tuner_path": "/musubi-tuner",
+            "python_bin": "/usr/local/bin/python",
+        },
+    ).json()
+
+    generate_response = client.post(
+        f"/api/projects/{project['id']}/dataset-config",
+        json={
+            "image_dirs": [str(alpha_dir), str(beta_dir)],
+            "resolution": [1024, 1024],
+            "batch_size": 1,
+        },
+    )
+
+    assert generate_response.status_code == 200
+
+    summary_response = client.get(
+        f"/api/projects/{project['id']}/datasets/summary",
+        params=[("selected", "alpha"), ("selected", "beta")],
+    )
+
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["selected_dataset_count"] == 2
+    assert summary["selected_image_count"] == 3
+    assert summary["merged_image_count"] == 3
+
+
 def test_serves_preview_image_files_from_dataset_roots(tmp_path, monkeypatch):
     monkeypatch.setenv("MUSUBI_UI_DATA_ROOT", str(tmp_path / "data"))
     monkeypatch.setenv("MUSUBI_UI_DATASETS_ROOT", str(tmp_path / "datasets"))
@@ -114,3 +161,26 @@ def test_serves_preview_image_files_from_dataset_roots(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.content.startswith(b"\x89PNG")
+
+
+def test_resolve_preview_file_allows_symlinked_merged_entries_without_resolving_outside_root(tmp_path, monkeypatch):
+    root_dir = tmp_path / "merged_dataset"
+    root_dir.mkdir()
+    preview_file = root_dir / "01_0001_sample.png"
+    preview_file.write_bytes(b"preview")
+    outside_target = tmp_path / "datasets" / "alpha" / "sample.png"
+    outside_target.parent.mkdir(parents=True)
+    outside_target.write_bytes(b"source")
+
+    real_resolve = Path.resolve
+
+    def fake_resolve(self, *args, **kwargs):
+        if self == preview_file:
+            return outside_target
+        return real_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    resolved = resolve_preview_file(root_dir, "01_0001_sample.png")
+
+    assert resolved == preview_file

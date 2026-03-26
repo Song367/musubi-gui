@@ -91,6 +91,9 @@ def test_frontend_exposes_zimage_dataset_picker_and_previews():
     assert response.status_code == 200
     body = response.text
     assert 'id="zi-dataset-picker"' in body
+    assert 'id="zi-selected-dataset-count"' in body
+    assert 'id="zi-selected-image-count"' in body
+    assert 'id="zi-merged-image-count"' in body
     assert 'id="zi-selected-dataset-preview"' in body
     assert 'id="zi-merged-dataset-preview"' in body
     assert 'id="zi-preview-dataset-select"' in body

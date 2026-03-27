@@ -212,3 +212,21 @@ class TestBuildZImageTrainCommand:
         cmd = build_zimage_train_command(**self.BASE, sdpa=True, sage_attn=True)
         assert '--sage-attn' in cmd
         assert '--sdpa' not in cmd
+
+    def test_defaults_to_two_data_loader_workers(self):
+        cmd = build_zimage_train_command(**self.BASE)
+        assert '--max_data_loader_n_workers' in cmd
+        idx = cmd.index('--max_data_loader_n_workers')
+        assert cmd[idx + 1] == '2'
+        assert '--persistent_data_loader_workers' in cmd
+
+    def test_disables_persistent_workers_when_worker_count_is_zero(self):
+        cmd = build_zimage_train_command(
+            **self.BASE,
+            max_data_loader_n_workers=0,
+            persistent_data_loader_workers=True,
+        )
+        assert '--max_data_loader_n_workers' in cmd
+        idx = cmd.index('--max_data_loader_n_workers')
+        assert cmd[idx + 1] == '0'
+        assert '--persistent_data_loader_workers' not in cmd

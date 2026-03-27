@@ -288,3 +288,60 @@ def test_zimage_train_uses_sage_attention_exclusively(tmp_path, monkeypatch):
     assert response.status_code == 201
     assert "--sage-attn" in captured["command"]
     assert "--sdpa" not in captured["command"]
+
+
+def test_zimage_train_exposes_worker_count_and_disables_persistent_workers_for_zero(tmp_path, monkeypatch):
+    monkeypatch.setenv("MUSUBI_UI_DATA_ROOT", str(tmp_path))
+    client = TestClient(app)
+
+    create_response = client.post(
+        "/api/projects",
+        json={
+            "name": "zimage-workers",
+            "project_type": "zimage",
+            "musubi_tuner_path": "/musubi-tuner",
+            "python_bin": "/usr/local/bin/python",
+        },
+    )
+    assert create_response.status_code == 201
+    project = create_response.json()
+    project_id = project["id"]
+
+    dataset_config = Path(project["workspace_root"]) / "dataset_config.toml"
+    dataset_config.write_text("[general]\nresolution = [1024, 1024]\n", encoding="utf-8")
+
+    captured = {}
+
+    def fake_launch_task(command, log_path, metadata_dir, project_id, task_type, extra_env=None):
+        captured["command"] = command
+        return {
+            "id": "task-workers",
+            "project_id": project_id,
+            "task_type": task_type,
+            "status": "running",
+            "command": command,
+            "log_path": str(log_path),
+            "pid": 9999,
+        }
+
+    monkeypatch.setattr("app.api.tasks.launch_task", fake_launch_task)
+
+    response = client.post(
+        f"/api/projects/{project_id}/zimage/train",
+        json={
+            "mode": "full_finetune",
+            "dit_path": "/models/z_image_bf16.safetensors",
+            "vae_path": "/models/ae.safetensors",
+            "text_encoder_path": "/models/qwen_3_4b.safetensors",
+            "output_dir": "/outputs/zimage",
+            "output_name": "workers-demo",
+            "max_data_loader_n_workers": 0,
+            "persistent_data_loader_workers": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert "--max_data_loader_n_workers" in captured["command"]
+    idx = captured["command"].index("--max_data_loader_n_workers")
+    assert captured["command"][idx + 1] == "0"
+    assert "--persistent_data_loader_workers" not in captured["command"]

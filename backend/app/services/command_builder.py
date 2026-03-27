@@ -237,6 +237,7 @@ def build_zimage_train_command(
     save_every_n_epochs: int = 1,
     gradient_checkpointing: bool = True,
     persistent_data_loader_workers: bool = True,
+    max_data_loader_n_workers: int = 2,
     network_dim: int = 32,
     network_alpha: int = 32,
     timestep_sampling: str = 'shift',
@@ -257,6 +258,7 @@ def build_zimage_train_command(
         sdpa = False
     elif not sdpa:
         sdpa = True
+    max_data_loader_n_workers = max(0, int(max_data_loader_n_workers))
     script_name = 'zimage_train.py' if mode == 'full_finetune' else 'zimage_train_network.py'
     command = [
         python_bin,
@@ -278,6 +280,7 @@ def build_zimage_train_command(
         '--timestep_sampling', timestep_sampling,
         '--weighting_scheme', weighting_scheme,
         '--discrete_flow_shift', str(discrete_flow_shift),
+        '--max_data_loader_n_workers', str(max_data_loader_n_workers),
     ]
 
     if max_grad_norm > 0:
@@ -288,7 +291,7 @@ def build_zimage_train_command(
     if optimizer_args:
         command.extend(['--optimizer_args'] + optimizer_args.split())
     _append_flag(command, gradient_checkpointing, '--gradient_checkpointing')
-    _append_flag(command, persistent_data_loader_workers, '--persistent_data_loader_workers')
+    _append_flag(command, persistent_data_loader_workers and max_data_loader_n_workers > 0, '--persistent_data_loader_workers')
     _append_flag(command, sdpa, '--sdpa')
     _append_flag(command, sage_attn, '--sage-attn')
     if blocks_to_swap > 0:

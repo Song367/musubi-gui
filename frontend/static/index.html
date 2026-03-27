@@ -722,6 +722,15 @@
               <input id="zi-blocks-to-swap" type="number" value="0" />
             </div>
           </div>
+          <div class="fields-row four">
+            <div class="field">
+              <label for="zi-data-loader-workers">Data Loader Workers</label>
+              <input id="zi-data-loader-workers" type="number" min="0" value="2" />
+            </div>
+            <div class="field"></div>
+            <div class="field"></div>
+            <div class="field"></div>
+          </div>
           
           <div class="fields-row two" style="grid-template-columns: 2fr 1fr;">
             <div class="field">
@@ -738,6 +747,11 @@
               <input type="checkbox" id="zi-gradient-checkpointing" checked />
               <span class="toggle-check"></span>
               <span class="toggle-label">Gradient Checkpointing</span>
+            </label>
+            <label class="toggle-item">
+              <input type="checkbox" id="zi-persistent-workers" checked />
+              <span class="toggle-check"></span>
+              <span class="toggle-label">Persistent Workers</span>
             </label>
             <label class="toggle-item">
               <input type="radio" id="zi-sdpa" name="zi-attention-backend" checked />

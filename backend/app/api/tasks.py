@@ -261,6 +261,7 @@ class ZImageTrainRequest(BaseModel):
     save_every_n_epochs: int = 1
     gradient_checkpointing: bool = True
     persistent_data_loader_workers: bool = True
+    max_data_loader_n_workers: int = 2
     network_dim: int = 32
     network_alpha: int = 32
     timestep_sampling: str = 'shift'
@@ -319,6 +320,7 @@ def zimage_train(project_id: str, payload: ZImageTrainRequest):
     else:
         sdpa_enabled = True
         sage_attn_enabled = False
+    max_data_loader_n_workers = max(0, payload.max_data_loader_n_workers)
     command = build_zimage_train_command(
         mode=payload.mode,
         python_bin=project.python_bin,
@@ -338,6 +340,7 @@ def zimage_train(project_id: str, payload: ZImageTrainRequest):
         save_every_n_epochs=payload.save_every_n_epochs,
         gradient_checkpointing=payload.gradient_checkpointing,
         persistent_data_loader_workers=payload.persistent_data_loader_workers,
+        max_data_loader_n_workers=max_data_loader_n_workers,
         network_dim=payload.network_dim,
         network_alpha=payload.network_alpha,
         timestep_sampling=payload.timestep_sampling,

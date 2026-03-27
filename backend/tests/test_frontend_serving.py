@@ -97,3 +97,12 @@ def test_frontend_exposes_zimage_dataset_picker_and_previews():
     assert 'id="zi-selected-dataset-preview"' in body
     assert 'id="zi-merged-dataset-preview"' in body
     assert 'id="zi-preview-dataset-select"' in body
+
+
+def test_frontend_exposes_zimage_worker_controls():
+    client = TestClient(app)
+    response = client.get("/")
+
+    assert response.status_code == 200
+    body = response.text
+    assert 'id="zi-data-loader-workers"' in body

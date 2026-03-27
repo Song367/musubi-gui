@@ -61,6 +61,18 @@ function applyZImageAttentionFlags(source = null) {
   setCheckbox('zi-sage-attn', flags.sage_attn);
 }
 
+function syncZImageWorkerControls() {
+  const workerInput = $('zi-data-loader-workers');
+  const persistentEl = $('zi-persistent-workers');
+  if (!workerInput || !persistentEl) return;
+  const workerCount = Math.max(0, parseInt(workerInput.value, 10) || 0);
+  workerInput.value = String(workerCount);
+  persistentEl.disabled = workerCount === 0;
+  if (workerCount === 0) {
+    persistentEl.checked = false;
+  }
+}
+
 function getGpuSelection(prefix) {
   return state.gpuSelections[prefix];
 }
@@ -550,6 +562,7 @@ function serializeZImageSection() {
       lr_warmup_steps: parseInt(val('zi-warmup-steps')) || 10,
       save_every_n_epochs: parseInt(val('zi-save-every')) || 1,
       max_train_epochs: parseInt(val('zi-epochs')) || 12,
+      max_data_loader_n_workers: Math.max(0, parseInt(val('zi-data-loader-workers')) || 0),
       timestep_sampling: val('zi-timestep-sampling') || 'shift',
       weighting_scheme: val('zi-weighting-scheme') || 'none',
       discrete_flow_shift: parseFloat(val('zi-discrete-flow-shift')) || 2.0,
@@ -557,6 +570,7 @@ function serializeZImageSection() {
       optimizer_args: val('zi-optimizer-args'),
       max_grad_norm: parseFloat(val('zi-max-grad-norm')) || 0,
       gradient_checkpointing: checked('zi-gradient-checkpointing'),
+      persistent_data_loader_workers: checked('zi-persistent-workers'),
       ...getZImageAttentionFlags(),
       fused_backward_pass: checked('zi-fused-backward'),
       full_bf16: checked('zi-full-bf16'),
@@ -635,6 +649,7 @@ function hydrateZImageSection(section) {
   setValue('zi-warmup-steps', section.training.lr_warmup_steps);
   setValue('zi-save-every', section.training.save_every_n_epochs);
   setValue('zi-epochs', section.training.max_train_epochs);
+  setValue('zi-data-loader-workers', section.training.max_data_loader_n_workers ?? 2);
   setValue('zi-timestep-sampling', section.training.timestep_sampling);
   setValue('zi-weighting-scheme', section.training.weighting_scheme);
   setValue('zi-discrete-flow-shift', section.training.discrete_flow_shift);
@@ -642,10 +657,12 @@ function hydrateZImageSection(section) {
   setValue('zi-optimizer-args', section.training.optimizer_args);
   setValue('zi-max-grad-norm', section.training.max_grad_norm);
   setCheckbox('zi-gradient-checkpointing', section.training.gradient_checkpointing);
+  setCheckbox('zi-persistent-workers', section.training.persistent_data_loader_workers !== false);
   applyZImageAttentionFlags(section.training);
   setCheckbox('zi-fused-backward', section.training.fused_backward_pass);
   setCheckbox('zi-full-bf16', section.training.full_bf16);
   hydrateGpuUi('zi', section.ui);
+  syncZImageWorkerControls();
   loadSelectedDatasetPreview();
   loadMergedDatasetPreview();
   updateSummary();
@@ -1455,6 +1472,7 @@ async function ziStartTraining() {
     lr_warmup_steps: parseInt(val('zi-warmup-steps')) || 10,
     max_train_epochs: parseInt(val('zi-epochs')) || 12,
     save_every_n_epochs: parseInt(val('zi-save-every')) || 1,
+    max_data_loader_n_workers: Math.max(0, parseInt(val('zi-data-loader-workers')) || 0),
     network_dim: parseInt(val('zi-network-dim')) || 32,
     network_alpha: parseInt(val('zi-network-alpha')) || 32,
     timestep_sampling: val('zi-timestep-sampling') || 'shift',
@@ -1464,6 +1482,7 @@ async function ziStartTraining() {
     optimizer_args: val('zi-optimizer-args'),
     max_grad_norm: parseFloat(val('zi-max-grad-norm')) || 0.0,
     gradient_checkpointing: checked('zi-gradient-checkpointing'),
+    persistent_data_loader_workers: checked('zi-persistent-workers'),
     ...getZImageAttentionFlags(),
     fused_backward_pass: checked('zi-fused-backward'),
     full_bf16: checked('zi-full-bf16'),
@@ -1523,6 +1542,9 @@ function init() {
   $('zi-cache-text-encoder').addEventListener('click', ziCacheTextEncoder);
   $('zi-start-training').addEventListener('click', ziStartTraining);
   $('zi-refresh-task').addEventListener('click', () => { if (state.activeTaskId) ziPollTask(state.activeTaskId); });
+  $('zi-data-loader-workers')?.addEventListener('input', () => {
+    syncZImageWorkerControls();
+  });
 
   // Z-Image Mode Defaults
   $('zi-train-mode')?.addEventListener('change', e => {
@@ -1597,6 +1619,7 @@ function init() {
   // Apply initial mode
   applyModelMode('dual');
   applyTaskType('i2v');
+  syncZImageWorkerControls();
   state.projectDefaults = {
     wan22: serializeWanSection(),
     zimage: (() => {

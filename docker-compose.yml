@@ -6,6 +6,7 @@ services:
     container_name: musubi-tuner-ui
     ports:
       - "8001:8001"
+    shm_size: "128gb"
     volumes:
       # Linux 服务器实际路径映射
       # 模型存放目录：假设你服务器把外部大模型放在了 /data/models（如果有其他位置请自行修改左侧）
